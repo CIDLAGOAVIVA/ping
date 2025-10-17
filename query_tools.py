@@ -151,6 +151,78 @@ class QueryTools:
         posts.sort(key=lambda x: x['engagement'], reverse=True)
         return posts[:limit]
     
+    def get_bottom_posts_by_likes(
+        self, 
+        limit: int = 10, 
+        profile: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retorna os posts com MENOS curtidas.
+        
+        Args:
+            limit: Número de posts a retornar
+            profile: Filtrar por perfil específico (opcional)
+            
+        Returns:
+            Lista de posts ordenados por curtidas (crescente)
+        """
+        where = {}
+        if profile:
+            where['profile'] = profile
+        
+        results = self.collection.get(
+            where=where if where else None,
+            limit=10000
+        )
+        
+        posts = []
+        for i in range(len(results['ids'])):
+            posts.append({
+                'id': results['ids'][i],
+                'metadata': results['metadatas'][i],
+                'document': results['documents'][i]
+            })
+        
+        # Ordena por curtidas (CRESCENTE - menos curtidas primeiro)
+        posts.sort(key=lambda x: x['metadata']['likesCount'], reverse=False)
+        return posts[:limit]
+    
+    def get_bottom_posts_by_comments(
+        self, 
+        limit: int = 10, 
+        profile: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retorna os posts com MENOS comentários.
+        
+        Args:
+            limit: Número de posts a retornar
+            profile: Filtrar por perfil específico (opcional)
+            
+        Returns:
+            Lista de posts ordenados por comentários (crescente)
+        """
+        where = {}
+        if profile:
+            where['profile'] = profile
+        
+        results = self.collection.get(
+            where=where if where else None,
+            limit=10000
+        )
+        
+        posts = []
+        for i in range(len(results['ids'])):
+            posts.append({
+                'id': results['ids'][i],
+                'metadata': results['metadatas'][i],
+                'document': results['documents'][i]
+            })
+        
+        # Ordena por comentários (CRESCENTE - menos comentários primeiro)
+        posts.sort(key=lambda x: x['metadata']['commentsCount'], reverse=False)
+        return posts[:limit]
+    
     def get_recent_posts(
         self, 
         days: int = 30, 

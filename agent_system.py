@@ -72,36 +72,46 @@ class RAGAgent:
    - Parâmetros: limit (int), profile (str, opcional)
    - Exemplo: {"tool": "get_posts_by_engagement", "limit": 10, "profile": "dceuff"}
 
-4. **get_recent_posts**
+4. **get_bottom_posts_by_likes**
+   - Uso: Encontrar posts com MENOS curtidas
+   - Parâmetros: limit (int), profile (str, opcional)
+   - Exemplo: {"tool": "get_bottom_posts_by_likes", "limit": 10, "profile": "dceuff"}
+
+5. **get_bottom_posts_by_comments**
+   - Uso: Encontrar posts com MENOS comentários
+   - Parâmetros: limit (int), profile (str, opcional)
+   - Exemplo: {"tool": "get_bottom_posts_by_comments", "limit": 5}
+
+6. **get_recent_posts**
    - Uso: Encontrar posts publicados recentemente
    - Parâmetros: days (int), limit (int), profile (str, opcional)
    - Exemplo: {"tool": "get_recent_posts", "days": 7, "limit": 5}
 
-5. **get_profile_statistics**
+7. **get_profile_statistics**
    - Uso: Obter estatísticas agregadas de um perfil
    - Parâmetros: profile (str, opcional - se omitido, retorna todos)
    - Exemplo: {"tool": "get_profile_statistics", "profile": "reitor"}
 
-6. **compare_profiles**
+8. **compare_profiles**
    - Uso: Comparar estatísticas entre todos os perfis
    - Parâmetros: nenhum
    - Exemplo: {"tool": "compare_profiles"}
 
-7. **count_term_occurrences**
+9. **count_term_occurrences**
    - Uso: QUANTIFICAR quantos posts mencionam um termo específico (consulta TODA a base)
    - Quando usar: "quantos posts falam sobre X", "quantas vezes mencionaram Y", "frequência de Z"
    - Parâmetros: term (str - termo a buscar), profile (str, opcional), case_sensitive (bool, default=False)
    - Exemplo: {"tool": "count_term_occurrences", "term": "greve", "profile": "dceuff"}
    - IMPORTANTE: Esta ferramenta CONTA ocorrências, não retorna os posts mais relevantes
 
-8. **analyze_sentiment**
+10. **analyze_sentiment**
    - Uso: ANALISAR SENTIMENTO e percepção sobre um tópico/entidade usando LLM
    - Quando usar: "como é visto X?", "percepção sobre Y", "o que pensam sobre Z", "análise de sentimento", "avaliação de X"
    - Parâmetros: topic (str - tópico/entidade), profile (str, opcional), n_posts (int, default=20)
    - Exemplo: {"tool": "analyze_sentiment", "topic": "reitor", "profile": "dceuff", "n_posts": 20}
    - Retorna: Contagem positivo/negativo/neutro, aspectos positivos/negativos, resumo qualitativo
 
-9. **semantic_search**
+11. **semantic_search**
    - Uso: Buscar posts por CONTEÚDO/TEMA usando busca semântica vetorial
    - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
    - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional)
@@ -123,12 +133,13 @@ class RAGAgent:
 ✅ Contexto específico: "última aparição pública", "pronunciamento sobre"
 
 ### Use FERRAMENTAS ESTRUTURADAS quando:
-✅ RANKING: "mais curtidos", "top 10", "maior engajamento"
+✅ RANKING MAIORES: "mais curtidos", "top 10", "maior engajamento"
+✅ RANKING MENORES: "menos curtidos", "posts com menos comentários", "menor engajamento" (use get_bottom_*)
 ✅ MÉTRICAS: "quantos posts", "média de curtidas", "estatísticas"
 ✅ COMPARAÇÕES NUMÉRICAS: "qual perfil tem mais X"
 ✅ FILTROS TEMPORAIS PUROS: "posts da última semana" (sem contexto de conteúdo)
 ✅ QUANTIFICAÇÃO DE TERMOS: "quantos posts falam sobre X", "frequência de Y" (use count_term_occurrences)
-✅ ANÁLISE DE SENTIMENTO: "como é visto X?", "percepção sobre Y", "opinião sobre Z" (use analyze_sentiment)
+✅ Precisa de CONTEXTO + RANKING: busca semântica + ordenação
 
 ### COMBINE FERRAMENTAS quando:
 ✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
@@ -182,6 +193,14 @@ Pergunta: "Quais foram os 5 posts mais curtidos?"
     "reasoning": "Ranking numérico por curtidas - métrica pura",
     "actions": [
         {{"tool": "get_top_posts_by_likes", "params": {{"limit": 5}}}}
+    ]
+}}
+
+Pergunta: "Quais posts do DCE tiveram menos curtidas?"
+{{
+    "reasoning": "Ranking INVERSO - posts com MENOS curtidas, não mais",
+    "actions": [
+        {{"tool": "get_bottom_posts_by_likes", "params": {{"limit": 10, "profile": "dceuff"}}}}
     ]
 }}
 
@@ -331,6 +350,18 @@ IMPORTANTE:
             
             elif tool == 'get_posts_by_engagement':
                 return self.query_tools.get_posts_by_engagement(
+                    limit=params.get('limit', 10),
+                    profile=params.get('profile')
+                )
+            
+            elif tool == 'get_bottom_posts_by_likes':
+                return self.query_tools.get_bottom_posts_by_likes(
+                    limit=params.get('limit', 10),
+                    profile=params.get('profile')
+                )
+            
+            elif tool == 'get_bottom_posts_by_comments':
+                return self.query_tools.get_bottom_posts_by_comments(
                     limit=params.get('limit', 10),
                     profile=params.get('profile')
                 )
