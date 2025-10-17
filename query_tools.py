@@ -333,6 +333,84 @@ class QueryTools:
             }
         
         return comparison
+    
+    def count_term_occurrences(
+        self,
+        term: str,
+        profile: Optional[str] = None,
+        case_sensitive: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Quantifica quantos posts mencionam um termo específico.
+        
+        Diferente da busca semântica que retorna os posts MAIS relevantes,
+        esta ferramenta conta TODOS os posts que mencionam o termo.
+        
+        Args:
+            term: Termo a buscar (pode ser palavra ou frase)
+            profile: Perfil específico ou None para todos
+            case_sensitive: Se True, considera maiúsculas/minúsculas
+            
+        Returns:
+            Dict com:
+            - count: Número de posts que mencionam o termo
+            - percentage: Porcentagem do total de posts
+            - total_posts: Total de posts analisados
+            - matching_posts: Lista de posts que mencionam o termo
+        """
+        try:
+            # Prepara filtro de perfil
+            where_filter = {"profile": profile} if profile else None
+            
+            # Busca TODOS os posts (limite alto)
+            results = self.collection.get(
+                where=where_filter,
+                limit=10000,  # Consulta toda a base
+                include=["documents", "metadatas"]
+            )
+            
+            total_posts = len(results['documents'])
+            
+            # Normaliza o termo de busca
+            search_term = term if case_sensitive else term.lower()
+            
+            # Filtra posts que contêm o termo
+            matching_posts = []
+            for i, doc in enumerate(results['documents']):
+                # Texto completo do post
+                text = doc if case_sensitive else doc.lower()
+                
+                # Verifica se o termo aparece no texto
+                if search_term in text:
+                    metadata = results['metadatas'][i]
+                    matching_posts.append({
+                        'document': results['documents'][i],
+                        'metadata': metadata
+                    })
+            
+            count = len(matching_posts)
+            percentage = (count / total_posts * 100) if total_posts > 0 else 0
+            
+            return {
+                'count': count,
+                'percentage': round(percentage, 2),
+                'total_posts': total_posts,
+                'term': term,
+                'profile': profile or 'todos os perfis',
+                'matching_posts': matching_posts
+            }
+            
+        except Exception as e:
+            print(f"❌ Erro ao contar ocorrências: {str(e)}")
+            return {
+                'count': 0,
+                'percentage': 0.0,
+                'total_posts': 0,
+                'term': term,
+                'profile': profile or 'todos os perfis',
+                'matching_posts': [],
+                'error': str(e)
+            }
 
 
 # Definições de ferramentas para function calling
@@ -461,6 +539,33 @@ TOOL_DEFINITIONS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "count_term_occurrences",
+            "description": "Quantifica quantos posts mencionam um termo específico consultando TODA a base de dados. Use para perguntas do tipo 'quantos posts falam sobre X', 'quantas vezes mencionaram Y', 'qual a frequência de Z'. Diferente da busca semântica que retorna os posts MAIS relevantes, esta ferramenta CONTA todos os posts que contêm o termo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "term": {
+                        "type": "string",
+                        "description": "Termo ou frase a buscar nos posts"
+                    },
+                    "profile": {
+                        "type": "string",
+                        "description": "Nome do perfil (deixe vazio para buscar em todos os perfis)",
+                        "enum": ["dceuff", "reitor", "vicereitor", ""]
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Se True, diferencia maiúsculas de minúsculas",
+                        "default": False
+                    }
+                },
+                "required": ["term"]
             }
         }
     }

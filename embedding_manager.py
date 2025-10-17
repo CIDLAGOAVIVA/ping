@@ -181,17 +181,24 @@ class EmbeddingManager:
         """
         count = self.collection.count()
         
-        # Pega amostra para estatísticas
+        # Pega TODOS os documentos para garantir que obtém todos os perfis
         if count > 0:
-            sample = self.collection.get(limit=min(100, count))
+            # Busca todos os documentos (só metadados, não documentos completos)
+            all_data = self.collection.get(
+                limit=count,  # Pega todos
+                include=['metadatas']  # Só metadados para ser mais rápido
+            )
             
             profiles = set()
-            for metadata in sample['metadatas']:
+            for metadata in all_data['metadatas']:
                 profiles.add(metadata['profile'])
+            
+            # Ordena os perfis alfabeticamente
+            profiles_list = sorted(list(profiles))
             
             return {
                 'total_documents': count,
-                'profiles': list(profiles),
+                'profiles': profiles_list,
                 'collection_name': self.collection_name,
                 'embedding_model': self.embedding_model
             }

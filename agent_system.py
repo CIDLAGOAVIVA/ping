@@ -87,7 +87,14 @@ class RAGAgent:
    - Parâmetros: nenhum
    - Exemplo: {"tool": "compare_profiles"}
 
-7. **semantic_search**
+7. **count_term_occurrences**
+   - Uso: QUANTIFICAR quantos posts mencionam um termo específico (consulta TODA a base)
+   - Quando usar: "quantos posts falam sobre X", "quantas vezes mencionaram Y", "frequência de Z"
+   - Parâmetros: term (str - termo a buscar), profile (str, opcional), case_sensitive (bool, default=False)
+   - Exemplo: {"tool": "count_term_occurrences", "term": "greve", "profile": "dceuff"}
+   - IMPORTANTE: Esta ferramenta CONTA ocorrências, não retorna os posts mais relevantes
+
+8. **semantic_search**
    - Uso: Buscar posts por CONTEÚDO/TEMA usando busca semântica vetorial
    - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
    - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional)
@@ -113,6 +120,7 @@ class RAGAgent:
 ✅ MÉTRICAS: "quantos posts", "média de curtidas", "estatísticas"
 ✅ COMPARAÇÕES NUMÉRICAS: "qual perfil tem mais X"
 ✅ FILTROS TEMPORAIS PUROS: "posts da última semana" (sem contexto de conteúdo)
+✅ QUANTIFICAÇÃO DE TERMOS: "quantos posts falam sobre X", "frequência de Y" (use count_term_occurrences)
 
 ### COMBINE FERRAMENTAS quando:
 ✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
@@ -336,6 +344,14 @@ IMPORTANTE:
                 comparison = self.query_tools.compare_profiles()
                 return [{'metadata': comparison, 'is_comparison': True}]
             
+            elif tool == 'count_term_occurrences':
+                result = self.query_tools.count_term_occurrences(
+                    term=params.get('term', ''),
+                    profile=params.get('profile'),
+                    case_sensitive=params.get('case_sensitive', False)
+                )
+                return [{'metadata': result, 'is_term_count': True}]
+            
             elif tool == 'semantic_search':
                 query = params.get('query', '')
                 n_results = params.get('n_results', 5)
@@ -412,6 +428,35 @@ IMPORTANTE:
                 text += f"- Curtidas: {stats['total_likes']} (média: {stats['avg_likes']:.1f})\n"
                 text += f"- Comentários: {stats['total_comments']} (média: {stats['avg_comments']:.1f})\n"
                 text += f"- Engajamento total: {stats['total_engagement']}\n\n"
+            return text
+        
+        # Verifica se é contagem de termo
+        if results[0].get('is_term_count'):
+            data = results[0]['metadata']
+            text = f"## Contagem de Termo: '{data['term']}'\n"
+            text += f"- Perfil(s): {data['profile']}\n"
+            text += f"- Posts encontrados: {data['count']} de {data['total_posts']} ({data['percentage']}%)\n\n"
+            
+            # Se houver erro
+            if data.get('error'):
+                text += f"⚠️ Erro: {data['error']}\n"
+                return text
+            
+            # Lista alguns posts que contêm o termo
+            if data['matching_posts']:
+                text += "### Exemplos de posts que mencionam o termo:\n\n"
+                for i, post in enumerate(data['matching_posts'][:5], 1):
+                    meta = post.get('metadata', {})
+                    doc = post.get('document', '')
+                    text += f"**Post {i}** (@{meta.get('profile', 'unknown')})\n"
+                    text += f"- Curtidas: {meta.get('likesCount', 0)}, Comentários: {meta.get('commentsCount', 0)}\n"
+                    text += f"- Data: {meta.get('timestamp', 'N/A')[:10]}\n"
+                    text += f"- Link: {meta.get('url', 'N/A')}\n"
+                    if doc:
+                        # Mostra trecho com o termo
+                        text += f"- Trecho: {doc[:250]}...\n"
+                    text += "\n"
+            
             return text
         
         # Posts regulares

@@ -68,6 +68,7 @@ class InstagramRAGApp:
                 'collection_name': em_stats.get('collection_name', 'unknown')
             }
             posts_count = self.stats['indexed_posts']
+            print(f"📊 Perfis detectados: {self.stats['profiles']}")
         
         print(f"\n✓ Sistema pronto com {posts_count} posts indexados")
     
@@ -121,6 +122,107 @@ class InstagramRAGApp:
                 """
             return html + "</div>"
         
+        # Verifica se é contagem de termo
+        if posts and posts[0].get('is_term_count'):
+            data = posts[0]['metadata']
+            html += f"<h3>🔍 Contagem de Termo: '{data['term']}'</h3>"
+            html += f"""
+            <div style='border: 1px solid #667eea; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #f0f4ff;'>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li><strong>📊 Posts encontrados:</strong> {data['count']} de {data['total_posts']} ({data['percentage']}%)</li>
+                    <li><strong>👥 Perfil(s):</strong> {data['profile']}</li>
+                </ul>
+            </div>
+            """
+            
+            # Se houver erro
+            if data.get('error'):
+                html += f"<p style='color: red;'>⚠️ Erro: {data['error']}</p>"
+                return html + "</div>"
+            
+            # Lista alguns posts que contêm o termo
+            if data.get('matching_posts') and len(data['matching_posts']) > 0:
+                html += "<h3>📌 Exemplos de Posts que Mencionam o Termo:</h3>"
+                
+                for i, post in enumerate(data['matching_posts'][:5], 1):
+                    metadata = post.get('metadata', {})
+                    doc = post.get('document', '')
+                    
+                    # Parse data
+                    try:
+                        from dateutil import parser as date_parser
+                        timestamp = date_parser.parse(metadata['timestamp'])
+                        date_str = timestamp.strftime('%d/%m/%Y às %H:%M')
+                    except:
+                        date_str = "Data não disponível"
+                    
+                    # Formata caption/documento
+                    caption = doc if doc else metadata.get('caption', 'Sem legenda')
+                    if len(caption) > 300:
+                        caption = caption[:300] + "..."
+                    
+                    # Card do post
+                    engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
+                    html += f"""
+                    <div style='
+                        border: 1px solid #e0e0e0; 
+                        border-radius: 12px; 
+                        padding: 1.2rem; 
+                        margin: 0.8rem 0; 
+                        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    '>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                            <div style='display: flex; align-items: center; gap: 0.5rem;'>
+                                <span style='
+                                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                    color: white;
+                                    padding: 0.3rem 0.8rem;
+                                    border-radius: 20px;
+                                    font-weight: 600;
+                                    font-size: 0.9rem;
+                                '>@{metadata['profile']}</span>
+                            </div>
+                            <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
+                        </div>
+                        <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{caption}</p>
+                        <div style='
+                            display: flex; 
+                            gap: 1.5rem; 
+                            margin: 1rem 0; 
+                            padding: 0.8rem; 
+                            background: rgba(102, 126, 234, 0.05); 
+                            border-radius: 8px;
+                        '>
+                            <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                                ❤️ <strong style='color: #e91e63;'>{metadata['likesCount']:,}</strong> curtidas
+                            </span>
+                            <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                                💬 <strong style='color: #2196f3;'>{metadata['commentsCount']:,}</strong> comentários
+                            </span>
+                            <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                                📊 <strong style='color: #667eea;'>{engagement:,}</strong> engajamento
+                            </span>
+                        </div>
+                        <a href='{metadata['url']}' target='_blank' style='
+                            display: inline-flex;
+                            align-items: center;
+                            gap: 0.5rem;
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            text-decoration: none;
+                            padding: 0.6rem 1.2rem;
+                            border-radius: 8px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                        '>
+                            🔗 Ver no Instagram
+                        </a>
+                    </div>
+                    """
+            
+            return html + "</div>"
+        
         html += "<h3>📌 Posts Recuperados:</h3>"
         
         for i, post in enumerate(posts, 1):
@@ -139,20 +241,65 @@ class InstagramRAGApp:
             if len(caption) > 300:
                 caption = caption[:300] + "..."
             
-            # Card do post
+            # Card do post moderno
+            engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
             html += f"""
-            <div style='border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #f9f9f9;'>
-                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;'>
-                    <strong style='color: #1DA1F2; font-size: 16px;'>@{metadata['profile']}</strong>
-                    <span style='color: #666; font-size: 12px;'>{date_str}</span>
+            <div style='
+                border: 1px solid #e0e0e0; 
+                border-radius: 12px; 
+                padding: 1.2rem; 
+                margin: 0.8rem 0; 
+                background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                transition: transform 0.2s;
+            ' onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.12)'" 
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'">
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                    <div style='display: flex; align-items: center; gap: 0.5rem;'>
+                        <span style='
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            padding: 0.3rem 0.8rem;
+                            border-radius: 20px;
+                            font-weight: 600;
+                            font-size: 0.9rem;
+                        '>@{metadata['profile']}</span>
+                    </div>
+                    <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
                 </div>
-                <p style='margin: 10px 0; line-height: 1.5;'>{caption}</p>
-                <div style='display: flex; gap: 20px; margin: 10px 0; color: #666; font-size: 14px;'>
-                    <span>❤️ {metadata['likesCount']} curtidas</span>
-                    <span>💬 {metadata['commentsCount']} comentários</span>
+                <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{caption}</p>
+                <div style='
+                    display: flex; 
+                    gap: 1.5rem; 
+                    margin: 1rem 0; 
+                    padding: 0.8rem; 
+                    background: rgba(102, 126, 234, 0.05); 
+                    border-radius: 8px;
+                '>
+                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                        ❤️ <strong style='color: #e91e63;'>{metadata['likesCount']:,}</strong> curtidas
+                    </span>
+                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                        💬 <strong style='color: #2196f3;'>{metadata['commentsCount']:,}</strong> comentários
+                    </span>
+                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                        📊 <strong style='color: #667eea;'>{engagement:,}</strong> engajamento
+                    </span>
                 </div>
-                <a href='{metadata['url']}' target='_blank' style='color: #1DA1F2; text-decoration: none; font-size: 14px;'>
-                    🔗 Ver post no Instagram
+                <a href='{metadata['url']}' target='_blank' style='
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    text-decoration: none;
+                    padding: 0.6rem 1.2rem;
+                    border-radius: 8px;
+                    font-size: 0.9rem;
+                    font-weight: 600;
+                    transition: opacity 0.2s;
+                ' onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                    🔗 Ver no Instagram
                 </a>
             </div>
             """
@@ -231,117 +378,170 @@ class InstagramRAGApp:
     
     def create_interface(self) -> gr.Blocks:
         """
-        Cria interface Gradio.
+        Cria interface Gradio moderna e amigável.
         
         Returns:
             Interface Gradio configurada
         """
+        # CSS customizado para deixar mais bonito
+        custom_css = """
+        .header-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            color: white;
+            text-align: center;
+        }
+        .stats-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+        }
+        .example-btn {
+            margin: 0.3rem !important;
+            background: white !important;
+            border: 1px solid #e0e0e0 !important;
+        }
+        .example-btn:hover {
+            background: #f0f0f0 !important;
+            border-color: #667eea !important;
+        }
+        """
+        
         with gr.Blocks(
-            title="Instagram RAG - UFF",
-            theme=gr.themes.Soft()
+            title="UFF Instagram RAG - Análise Inteligente",
+            theme=gr.themes.Soft(
+                primary_hue="purple",
+                secondary_hue="blue",
+                font=["Inter", "sans-serif"]
+            ),
+            css=custom_css
         ) as app:
             
-            mode_badge = "🤖 **AGENTE INTELIGENTE**" if self.use_agent else "🔧 **MODO CLÁSSICO**"
-            
-            gr.Markdown(
-                f"""
-                # 📱 Instagram RAG - Análise de Posts Institucionais UFF
-                
-                {mode_badge}
-                
-                Sistema de busca semântica e análise de posts do Instagram usando RAG (Retrieval-Augmented Generation).
-                
-                {'O agente inteligente usa LLM para decidir automaticamente quais ferramentas usar!' if self.use_agent else 'Sistema com detecção de palavras-chave para ativar ferramentas.'}
-                
-                Faça perguntas sobre os posts e receba respostas contextualizadas com links para as fontes.
-                """
-            )
+            # Header limpo e moderno
+            with gr.Row():
+                with gr.Column():
+                    gr.HTML(f"""
+                    <div class="header-container" style="color: #ffffff !important;">
+                        <h1 style="margin: 0; font-size: 2.5rem; color: #ffffff !important;">📱 UFF Instagram Analytics</h1>
+                        <p style="margin: 0.8rem 0 0 0; font-size: 1rem; opacity: 0.85; color: #ffffff !important;">
+                            Faça perguntas sobre os {self.stats['indexed_posts']:,} posts dos perfis oficiais da UFF
+                        </p>
+                    </div>
+                    """)
             
             with gr.Row():
-                with gr.Column(scale=2):
-                    # Área de chat
+                with gr.Column(scale=7):
+                    # Área de chat principal
                     chatbot = gr.Chatbot(
-                        label="Conversa",
-                        height=400,
-                        show_copy_button=True
+                        label="💬 Conversa",
+                        height=500,
+                        show_copy_button=True,
+                        avatar_images=(None, "assets/agent_avatar.png"),
+                        bubble_full_width=False
                     )
                     
+                    # Input melhorado
                     with gr.Row():
                         msg = gr.Textbox(
-                            label="Sua pergunta",
-                            placeholder="Ex: Quais posts do reitor mencionam o HUAP?",
+                            label="",
+                            placeholder="Digite sua pergunta... Ex: Qual foi a última aparição do reitor?",
                             lines=2,
-                            scale=4
+                            scale=9,
+                            show_label=False
                         )
-                        send_btn = gr.Button("Enviar 📤", scale=1, variant="primary")
+                        send_btn = gr.Button(
+                            "Enviar 🚀", 
+                            scale=1, 
+                            variant="primary",
+                            size="lg"
+                        )
                     
-                    clear_btn = gr.Button("Limpar conversa 🗑️")
+                    with gr.Row():
+                        clear_btn = gr.Button("🗑️ Limpar Conversa", size="sm", variant="secondary")
+                        gr.Markdown("<div style='flex-grow: 1;'></div>")  # Spacer
                     
-                    # Fontes
-                    sources = gr.HTML(label="Posts Recuperados")
+                                        # Fontes com accordion
+                    with gr.Accordion("📚 Posts Recuperados (Fontes)", open=False):
+                        sources = gr.HTML()
                 
-                with gr.Column(scale=1):
-                    # Configurações
+                with gr.Column(scale=3):
+                    # Painel lateral simplificado
                     gr.Markdown("### ⚙️ Configurações")
                     
-                    n_results = gr.Slider(
-                        minimum=1,
-                        maximum=10,
-                        value=5,
-                        step=1,
-                        label="Número de posts a recuperar",
-                        info="Mais posts = mais contexto (ignorado no modo agente)" if self.use_agent else "Mais posts = mais contexto, mas respostas mais longas",
-                        visible=not self.use_agent  # Oculta no modo agente
-                    )
-                    
                     profile_filter = gr.Dropdown(
-                        choices=["Todos"] + ["@" + p for p in self.stats['profiles']],
-                        value="Todos",
-                        label="Filtrar por perfil",
-                        info="Buscar apenas em um perfil específico"
+                        choices=["🌐 Todos os Perfis"] + ["@" + p for p in self.stats['profiles']],
+                        value="🌐 Todos os Perfis",
+                        label="Filtrar por Perfil"
                     )
                     
-                    # Exemplos
-                    gr.Markdown("### 💡 Perguntas Exemplo")
+                    if not self.use_agent:
+                        n_results = gr.Slider(
+                            minimum=1,
+                            maximum=10,
+                            value=5,
+                            step=1,
+                            label="Posts a recuperar"
+                        )
+                    else:
+                        n_results = gr.Number(value=5, visible=False)
+                    
+                    # Estatísticas compactas
+                    with gr.Accordion("📊 Estatísticas", open=False):
+                        gr.HTML(value=self.get_stats_html())
+                    
+                    # Exemplos compactos
+                    gr.Markdown("---")
+                    gr.Markdown("### 💡 Exemplos")
                     
                     if self.use_agent:
                         example_questions = [
-                            "Qual foi o post mais curtido do reitor?",
-                            "Compare o engajamento entre os perfis",
-                            "Me mostre posts recentes sobre HUAP",
-                            "Estatísticas do DCE UFF",
-                            "Quais posts tiveram mais comentários na última semana?"
+                            ("🏆", "Post mais curtido do reitor"),
+                            ("📊", "Compare os perfis"),
+                            ("🔍", "Posts sobre HUAP"),
+                            ("🗓️", "Publicações em 2024"),
+                            ("💬", "Última aparição do reitor")
                         ]
                     else:
                         example_questions = [
-                            "Quais foram os posts mais recentes do DCE UFF?",
-                            "Mostre posts sobre o HUAP",
-                            "Quais posts tiveram mais curtidas?",
-                            "O que foi publicado sobre pesquisa?",
-                            "Posts que mencionam estudantes nos últimos meses"
+                            ("📝", "Posts recentes do DCE"),
+                            ("🏥", "Posts sobre HUAP"),
+                            ("❤️", "Posts mais curtidos"),
+                            ("🔬", "Sobre pesquisa"),
+                            ("🎓", "Mencionam estudantes")
                         ]
                     
-                    for question in example_questions:
-                        gr.Button(
-                            question,
-                            size="sm"
-                        ).click(
+                    for emoji, question in example_questions:
+                        btn = gr.Button(
+                            f"{emoji} {question}",
+                            size="sm",
+                            elem_classes="example-btn"
+                        )
+                        btn.click(
                             lambda q=question: q,
                             outputs=msg
                         )
-                    
-                    # Estatísticas
-                    gr.Markdown("---")
-                    stats_display = gr.HTML(value=self.get_stats_html())
             
             # Lógica do chat
             def respond(message, chat_history, n_res, profile_filt):
+                if not message.strip():
+                    return message, chat_history, ""
+                
+                # Processa filtro de perfil
+                if profile_filt.startswith("🌐"):
+                    profile = None
+                else:
+                    profile = profile_filt.replace("@", "")
+                
                 # Gera resposta
                 response, sources_html = self.chat_response(
                     message, 
                     chat_history, 
                     n_res, 
-                    profile_filt.replace("@", "") if profile_filt != "Todos" else "Todos"
+                    profile if profile else "Todos"
                 )
                 
                 # Atualiza histórico
@@ -367,28 +567,20 @@ class InstagramRAGApp:
                 outputs=[chatbot, sources]
             )
             
-            # Informações adicionais
-            gr.Markdown(
-                """
-                ---
-                ### 📖 Como usar:
-                
-                1. **Faça perguntas naturais** sobre os posts do Instagram
-                2. **Ajuste as configurações** para refinar os resultados
-                3. **Clique nos links** dos posts recuperados para ver no Instagram
-                4. **Use os exemplos** como inspiração para suas perguntas
-                
-                ### 🎯 Dicas:
-                
-                - Seja específico: mencione perfis, datas ou temas
-                - Pergunte sobre engajamento, curtidas ou comentários
-                - Peça comparações entre perfis ou períodos
-                - Use filtros para focar em um perfil específico
-                
-                ---
-                💡 **Sistema desenvolvido com Ollama, ChromaDB e Gradio**
-                """
-            )
+            # Rodapé limpo
+            gr.Markdown("---")
+            gr.HTML(f"""
+            <div style="text-align: center; padding: 1rem; color: #999; font-size: 0.85rem;">
+                <p style="margin: 0.3rem 0;">
+                    🎓 Universidade Federal Fluminense • 
+                    {self.stats['indexed_posts']:,} posts • 
+                    {len(self.stats['profiles'])} perfis
+                </p>
+                <p style="margin: 0.3rem 0; font-size: 0.75rem; color: #bbb;">
+                    Powered by Ollama • ChromaDB • Gradio
+                </p>
+            </div>
+            """)
         
         return app
     
