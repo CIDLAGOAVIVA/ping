@@ -1,0 +1,15 @@
+# Instagram RAG - Dependências Python
+# 
+# Instalação com pip (alternativa ao uv):
+#   pip install -r requirements.txt
+#
+# Recomendamos usar uv para melhor gerenciamento:
+#   uv sync
+
+gradio>=4.0.0
+chromadb>=0.4.0
+langchain>=0.1.0
+langchain-community>=0.0.10
+ollama>=0.1.0
+python-dateutil>=2.8.0
+emoji>=2.0.0

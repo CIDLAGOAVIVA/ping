@@ -1,0 +1,21 @@
+# Configuração do Instagram RAG
+# Copie este arquivo para .env se desejar personalizar
+
+# Modelos Ollama
+EMBEDDING_MODEL=mxbai-embed-large
+GENERATION_MODEL=qwen3:30b
+
+# Diretórios
+DATA_DIR=data
+CHROMA_DB_DIR=./chroma_db
+
+# Configurações da aplicação
+PORT=7860
+SHARE=false
+
+# Configurações de busca
+DEFAULT_N_RESULTS=5
+MAX_N_RESULTS=10
+
+# Configurações de indexação
+BATCH_SIZE=100
