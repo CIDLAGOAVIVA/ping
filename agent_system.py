@@ -39,7 +39,7 @@ class RAGAgent:
             planning_model: Modelo para planejar ações (pode ser menor/mais rápido)
         """
         self.embedding_manager = EmbeddingManager(embedding_model=embedding_model)
-        self.query_tools = QueryTools(self.embedding_manager)
+        self.query_tools = QueryTools(self.embedding_manager, llm_model=generation_model)
         self.generation_model = generation_model
         self.planning_model = planning_model
         
@@ -94,7 +94,14 @@ class RAGAgent:
    - Exemplo: {"tool": "count_term_occurrences", "term": "greve", "profile": "dceuff"}
    - IMPORTANTE: Esta ferramenta CONTA ocorrências, não retorna os posts mais relevantes
 
-8. **semantic_search**
+8. **analyze_sentiment**
+   - Uso: ANALISAR SENTIMENTO e percepção sobre um tópico/entidade usando LLM
+   - Quando usar: "como é visto X?", "percepção sobre Y", "o que pensam sobre Z", "análise de sentimento", "avaliação de X"
+   - Parâmetros: topic (str - tópico/entidade), profile (str, opcional), n_posts (int, default=20)
+   - Exemplo: {"tool": "analyze_sentiment", "topic": "reitor", "profile": "dceuff", "n_posts": 20}
+   - Retorna: Contagem positivo/negativo/neutro, aspectos positivos/negativos, resumo qualitativo
+
+9. **semantic_search**
    - Uso: Buscar posts por CONTEÚDO/TEMA usando busca semântica vetorial
    - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
    - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional)
@@ -121,6 +128,7 @@ class RAGAgent:
 ✅ COMPARAÇÕES NUMÉRICAS: "qual perfil tem mais X"
 ✅ FILTROS TEMPORAIS PUROS: "posts da última semana" (sem contexto de conteúdo)
 ✅ QUANTIFICAÇÃO DE TERMOS: "quantos posts falam sobre X", "frequência de Y" (use count_term_occurrences)
+✅ ANÁLISE DE SENTIMENTO: "como é visto X?", "percepção sobre Y", "opinião sobre Z" (use analyze_sentiment)
 
 ### COMBINE FERRAMENTAS quando:
 ✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
@@ -352,6 +360,14 @@ IMPORTANTE:
                 )
                 return [{'metadata': result, 'is_term_count': True}]
             
+            elif tool == 'analyze_sentiment':
+                result = self.query_tools.analyze_sentiment(
+                    topic=params.get('topic', ''),
+                    profile=params.get('profile'),
+                    n_posts=params.get('n_posts', 20)
+                )
+                return [{'metadata': result, 'is_sentiment': True}]
+            
             elif tool == 'semantic_search':
                 query = params.get('query', '')
                 n_results = params.get('n_results', 5)
@@ -456,6 +472,68 @@ IMPORTANTE:
                         # Mostra trecho com o termo
                         text += f"- Trecho: {doc[:250]}...\n"
                     text += "\n"
+            
+            return text
+        
+        # Verifica se é análise de sentimento
+        if results[0].get('is_sentiment'):
+            data = results[0]['metadata']
+            text = f"## Análise de Sentimento: '{data['topic']}'\n"
+            text += f"- Perfil(s): {data['profile']}\n"
+            text += f"- Posts analisados: {data['total_posts']}\n\n"
+            
+            # Se houver erro
+            if data.get('error'):
+                text += f"⚠️ Erro: {data['error']}\n"
+                return text
+            
+            # Resumo do sentimento
+            text += f"### Resumo Geral:\n{data['sentiment_summary']}\n\n"
+            
+            # Distribuição de sentimentos
+            text += "### Distribuição de Sentimentos:\n"
+            text += f"- ✅ Positivos: {data['positive_count']} posts\n"
+            text += f"- ❌ Negativos: {data['negative_count']} posts\n"
+            text += f"- ⚪ Neutros: {data['neutral_count']} posts\n\n"
+            
+            # Aspectos positivos
+            if data.get('positive_aspects'):
+                text += "### Aspectos Positivos Identificados:\n"
+                for aspect in data['positive_aspects']:
+                    text += f"- {aspect}\n"
+                text += "\n"
+            
+            # Aspectos negativos
+            if data.get('negative_aspects'):
+                text += "### Aspectos Negativos/Críticas:\n"
+                for aspect in data['negative_aspects']:
+                    text += f"- {aspect}\n"
+                text += "\n"
+            
+            # Pontos-chave
+            if data.get('key_points'):
+                text += "### Pontos-Chave:\n"
+                for point in data['key_points']:
+                    text += f"- {point}\n"
+                text += "\n"
+            
+            # Exemplos de posts
+            examples = data.get('examples', {})
+            if examples.get('positive'):
+                text += "### Exemplos de Posts Positivos:\n"
+                for i, post in enumerate(examples['positive'][:2], 1):
+                    meta = post.get('metadata', {})
+                    doc = post.get('document', '')[:200]
+                    text += f"{i}. @{meta.get('profile')}: {doc}... [{meta.get('url')}]\n"
+                text += "\n"
+            
+            if examples.get('negative'):
+                text += "### Exemplos de Posts Negativos:\n"
+                for i, post in enumerate(examples['negative'][:2], 1):
+                    meta = post.get('metadata', {})
+                    doc = post.get('document', '')[:200]
+                    text += f"{i}. @{meta.get('profile')}: {doc}... [{meta.get('url')}]\n"
+                text += "\n"
             
             return text
         

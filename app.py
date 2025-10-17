@@ -223,10 +223,115 @@ class InstagramRAGApp:
             
             return html + "</div>"
         
+        # Verifica se é análise de sentimento
+        if posts and posts[0].get('is_sentiment'):
+            data = posts[0]['metadata']
+            html += f"<h3>🎭 Análise de Sentimento: '{data['topic']}'</h3>"
+            html += f"""
+            <div style='border: 1px solid #667eea; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #f0f4ff;'>
+                <ul style='list-style-type: none; padding: 0;'>
+                    <li><strong>👥 Perfil(s):</strong> {data['profile']}</li>
+                    <li><strong>📊 Posts analisados:</strong> {data['total_posts']}</li>
+                </ul>
+            </div>
+            """
+            
+            # Se houver erro
+            if data.get('error'):
+                html += f"<p style='color: red;'>⚠️ Erro: {data['error']}</p>"
+                return html + "</div>"
+            
+            # Resumo do sentimento
+            html += f"""
+            <div style='border-left: 4px solid #667eea; padding: 15px; margin: 10px 0; background-color: #f9f9f9;'>
+                <h4 style='margin-top: 0;'>📝 Resumo Geral:</h4>
+                <p>{data['sentiment_summary']}</p>
+            </div>
+            """
+            
+            # Distribuição de sentimentos (gráfico visual)
+            total = data['positive_count'] + data['negative_count'] + data['neutral_count']
+            pos_pct = (data['positive_count'] / total * 100) if total > 0 else 0
+            neg_pct = (data['negative_count'] / total * 100) if total > 0 else 0
+            neu_pct = (data['neutral_count'] / total * 100) if total > 0 else 0
+            
+            html += f"""
+            <div style='border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0;'>
+                <h4 style='margin-top: 0;'>📊 Distribuição de Sentimentos:</h4>
+                <div style='margin: 10px 0;'>
+                    <div style='display: flex; align-items: center; margin: 5px 0;'>
+                        <span style='width: 100px;'>✅ Positivo:</span>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
+                            <div style='background: #4caf50; height: 100%; border-radius: 4px; width: {pos_pct}%;'></div>
+                        </div>
+                        <span style='width: 80px;'>{data['positive_count']} ({pos_pct:.1f}%)</span>
+                    </div>
+                    <div style='display: flex; align-items: center; margin: 5px 0;'>
+                        <span style='width: 100px;'>❌ Negativo:</span>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
+                            <div style='background: #f44336; height: 100%; border-radius: 4px; width: {neg_pct}%;'></div>
+                        </div>
+                        <span style='width: 80px;'>{data['negative_count']} ({neg_pct:.1f}%)</span>
+                    </div>
+                    <div style='display: flex; align-items: center; margin: 5px 0;'>
+                        <span style='width: 100px;'>⚪ Neutro:</span>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
+                            <div style='background: #9e9e9e; height: 100%; border-radius: 4px; width: {neu_pct}%;'></div>
+                        </div>
+                        <span style='width: 80px;'>{data['neutral_count']} ({neu_pct:.1f}%)</span>
+                    </div>
+                </div>
+            </div>
+            """
+            
+            # Aspectos positivos e negativos
+            if data.get('positive_aspects') or data.get('negative_aspects'):
+                html += "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 10px 0;'>"
+                
+                if data.get('positive_aspects'):
+                    html += """
+                    <div style='border: 1px solid #4caf50; border-radius: 8px; padding: 15px; background-color: #f1f8f4;'>
+                        <h4 style='margin-top: 0; color: #4caf50;'>✅ Aspectos Positivos:</h4>
+                        <ul>
+                    """
+                    for aspect in data['positive_aspects']:
+                        html += f"<li>{aspect}</li>"
+                    html += "</ul></div>"
+                
+                if data.get('negative_aspects'):
+                    html += """
+                    <div style='border: 1px solid #f44336; border-radius: 8px; padding: 15px; background-color: #fef1f0;'>
+                        <h4 style='margin-top: 0; color: #f44336;'>❌ Críticas/Aspectos Negativos:</h4>
+                        <ul>
+                    """
+                    for aspect in data['negative_aspects']:
+                        html += f"<li>{aspect}</li>"
+                    html += "</ul></div>"
+                
+                html += "</div>"
+            
+            # Pontos-chave
+            if data.get('key_points'):
+                html += """
+                <div style='border: 1px solid #667eea; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #f0f4ff;'>
+                    <h4 style='margin-top: 0; color: #667eea;'>🔑 Pontos-Chave:</h4>
+                    <ul>
+                """
+                for point in data['key_points']:
+                    html += f"<li>{point}</li>"
+                html += "</ul></div>"
+            
+            return html + "</div>"
+        
         html += "<h3>📌 Posts Recuperados:</h3>"
         
         for i, post in enumerate(posts, 1):
             metadata = post['metadata']
+            
+            # Verifica se não é um post normal (stats, comparison, term_count, sentiment)
+            # Esses tipos já foram renderizados acima
+            if any(key in post for key in ['is_stats', 'is_comparison', 'is_term_count', 'is_sentiment']):
+                continue
             
             # Parse data
             try:

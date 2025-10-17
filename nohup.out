@@ -1,0 +1,32 @@
+/home/marcus/projects/ping/app.py:544: UserWarning: You have not specified a value for the `type` parameter. Defaulting to the 'tuples' format for chatbot messages, but this is deprecated and will be removed in a future version of Gradio. Please set type='messages' instead, which uses openai-style dictionaries with 'role' and 'content' keys.
+  chatbot = gr.Chatbot(
+/home/marcus/projects/ping/app.py:544: DeprecationWarning: The 'bubble_full_width' parameter is deprecated and will be removed in a future version. This parameter no longer has any effect.
+  chatbot = gr.Chatbot(
+🚀 Iniciando aplicação RAG...
+🤖 Modo: Agente Inteligente (LLM decide quais ferramentas usar)
+✓ Coleção 'instagram_posts' carregada com 2413 documentos
+✓ Agente RAG inicializado
+  - Modelo de planejamento: qwen3:30b
+  - Modelo de geração: qwen3:30b
+📊 Perfis detectados: ['dceuff', 'reitor', 'vicereitor']
+
+✓ Sistema pronto com 2413 posts indexados
+
+🌐 Iniciando interface web na porta 7860...
+* Running on local URL:  http://0.0.0.0:7860
+* To create a public link, set `share=True` in `launch()`.
+Keyboard interruption in main thread... closing server.
+Exception ignored in atexit callback: <bound method Client.join of <posthog.client.Client object at 0x7ba9fd7c3aa0>>
+Traceback (most recent call last):
+  File "/home/marcus/projects/ping/.venv/lib/python3.12/site-packages/posthog/client.py", line 851, in join
+    consumer.join()
+  File "/usr/lib/python3.12/threading.py", line 1147, in join
+    self._wait_for_tstate_lock()
+  File "/usr/lib/python3.12/threading.py", line 1167, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt: 
+/home/marcus/projects/ping/app.py:544: UserWarning: You have not specified a value for the `type` parameter. Defaulting to the 'tuples' format for chatbot messages, but this is deprecated and will be removed in a future version of Gradio. Please set type='messages' instead, which uses openai-style dictionaries with 'role' and 'content' keys.
+  chatbot = gr.Chatbot(
+/home/marcus/projects/ping/app.py:544: DeprecationWarning: The 'bubble_full_width' parameter is deprecated and will be removed in a future version. This parameter no longer has any effect.
+  chatbot = gr.Chatbot(
