@@ -38,7 +38,7 @@ class RAGAgent:
             generation_model: Modelo para gerar resposta final
             planning_model: Modelo para planejar ações (pode ser menor/mais rápido)
         """
-        self.embedding_manager = EmbeddingManager(model=embedding_model)
+        self.embedding_manager = EmbeddingManager(embedding_model=embedding_model)
         self.query_tools = QueryTools(self.embedding_manager)
         self.generation_model = generation_model
         self.planning_model = planning_model

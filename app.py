@@ -1,8 +1,10 @@
 """
 Aplicação Gradio para Chat RAG de Posts do Instagram.
+Agora usando sistema de agente inteligente!
 """
 
 import gradio as gr
+from agent_system import RAGAgent
 from rag_system import RAGSystem
 from datetime import datetime
 from typing import List, Tuple
@@ -10,12 +12,13 @@ import json
 
 
 class InstagramRAGApp:
-    """Aplicação de chat RAG com interface Gradio."""
+    """Aplicação de chat RAG com interface Gradio usando agente inteligente."""
 
     def __init__(
         self,
         embedding_model: str = "mxbai-embed-large",
-        generation_model: str = "qwen3:30b"
+        generation_model: str = "qwen3:30b",
+        use_agent: bool = True
     ):
         """
         Inicializa a aplicação.
@@ -23,21 +26,40 @@ class InstagramRAGApp:
         Args:
             embedding_model: Modelo para embeddings
             generation_model: Modelo para geração
+            use_agent: Se True, usa sistema de agente (recomendado)
         """
         print("🚀 Iniciando aplicação RAG...")
         
-        # Inicializa sistema RAG
-        self.rag = RAGSystem(
-            embedding_model=embedding_model,
-            generation_model=generation_model
-        )
+        self.use_agent = use_agent
         
-        # Indexa posts na inicialização
-        print("\n📊 Verificando índice de posts...")
-        self.rag.index_all_posts()
+        if use_agent:
+            # Inicializa sistema de agente inteligente
+            print("🤖 Modo: Agente Inteligente (LLM decide quais ferramentas usar)")
+            self.agent = RAGAgent(
+                embedding_model=embedding_model,
+                generation_model=generation_model,
+                planning_model=generation_model  # Pode usar modelo mais leve aqui
+            )
+            # Mantém referência ao embedding_manager para stats
+            self.embedding_manager = self.agent.embedding_manager
+        else:
+            # Sistema antigo com detecção de keywords
+            print("🔧 Modo: Sistema Clássico (detecção por palavras-chave)")
+            self.rag = RAGSystem(
+                embedding_model=embedding_model,
+                generation_model=generation_model
+            )
+            self.embedding_manager = self.rag.embedding_manager
         
-        # Estatísticas
-        self.stats = self.rag.get_system_stats()
+        # Indexa posts na inicialização (se não usar agente)
+        if not use_agent:
+            print("\n📊 Verificando índice de posts...")
+            self.rag.index_all_posts()
+            self.stats = self.rag.get_system_stats()
+        else:
+            # Para o agente, verifica stats do embedding manager
+            self.stats = self.embedding_manager.get_stats()
+        
         print(f"\n✓ Sistema pronto com {self.stats['indexed_posts']} posts indexados")
     
     def format_sources(self, posts: List[dict]) -> str:
@@ -142,7 +164,7 @@ class InstagramRAGApp:
         Args:
             message: Mensagem do usuário
             history: Histórico do chat
-            n_results: Número de posts a recuperar
+            n_results: Número de posts a recuperar (ignorado no modo agente)
             profile_filter: Filtro de perfil
             
         Returns:
@@ -155,11 +177,19 @@ class InstagramRAGApp:
         profile = profile_filter if profile_filter != "Todos" else None
         
         # Executa query
-        response, posts = self.rag.query(
-            question=message,
-            n_results=n_results,
-            profile_filter=profile
-        )
+        if self.use_agent:
+            # Modo agente: LLM decide tudo
+            response, posts = self.agent.query(
+                question=message,
+                profile_filter=profile
+            )
+        else:
+            # Modo clássico: keywords + n_results
+            response, posts = self.rag.query(
+                question=message,
+                n_results=n_results,
+                profile_filter=profile
+            )
         
         # Formata fontes
         sources_html = self.format_sources(posts)
@@ -200,11 +230,17 @@ class InstagramRAGApp:
             theme=gr.themes.Soft()
         ) as app:
             
+            mode_badge = "🤖 **AGENTE INTELIGENTE**" if self.use_agent else "🔧 **MODO CLÁSSICO**"
+            
             gr.Markdown(
-                """
+                f"""
                 # 📱 Instagram RAG - Análise de Posts Institucionais UFF
                 
+                {mode_badge}
+                
                 Sistema de busca semântica e análise de posts do Instagram usando RAG (Retrieval-Augmented Generation).
+                
+                {'O agente inteligente usa LLM para decidir automaticamente quais ferramentas usar!' if self.use_agent else 'Sistema com detecção de palavras-chave para ativar ferramentas.'}
                 
                 Faça perguntas sobre os posts e receba respostas contextualizadas com links para as fontes.
                 """
@@ -243,7 +279,8 @@ class InstagramRAGApp:
                         value=5,
                         step=1,
                         label="Número de posts a recuperar",
-                        info="Mais posts = mais contexto, mas respostas mais longas"
+                        info="Mais posts = mais contexto (ignorado no modo agente)" if self.use_agent else "Mais posts = mais contexto, mas respostas mais longas",
+                        visible=not self.use_agent  # Oculta no modo agente
                     )
                     
                     profile_filter = gr.Dropdown(
@@ -255,13 +292,23 @@ class InstagramRAGApp:
                     
                     # Exemplos
                     gr.Markdown("### 💡 Perguntas Exemplo")
-                    example_questions = [
-                        "Quais foram os posts mais recentes do DCE UFF?",
-                        "Mostre posts sobre o HUAP",
-                        "Quais posts tiveram mais curtidas?",
-                        "O que foi publicado sobre pesquisa?",
-                        "Posts que mencionam estudantes nos últimos meses"
-                    ]
+                    
+                    if self.use_agent:
+                        example_questions = [
+                            "Qual foi o post mais curtido do reitor?",
+                            "Compare o engajamento entre os perfis",
+                            "Me mostre posts recentes sobre HUAP",
+                            "Estatísticas do DCE UFF",
+                            "Quais posts tiveram mais comentários na última semana?"
+                        ]
+                    else:
+                        example_questions = [
+                            "Quais foram os posts mais recentes do DCE UFF?",
+                            "Mostre posts sobre o HUAP",
+                            "Quais posts tiveram mais curtidas?",
+                            "O que foi publicado sobre pesquisa?",
+                            "Posts que mencionam estudantes nos últimos meses"
+                        ]
                     
                     for question in example_questions:
                         gr.Button(
