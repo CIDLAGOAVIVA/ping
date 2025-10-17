@@ -56,11 +56,20 @@ class InstagramRAGApp:
             print("\n📊 Verificando índice de posts...")
             self.rag.index_all_posts()
             self.stats = self.rag.get_system_stats()
+            posts_count = self.stats.get('indexed_posts', 0)
         else:
             # Para o agente, verifica stats do embedding manager
-            self.stats = self.embedding_manager.get_stats()
+            em_stats = self.embedding_manager.get_stats()
+            # Adapta estrutura para compatibilidade
+            self.stats = {
+                'indexed_posts': em_stats.get('total_documents', 0),
+                'profiles': em_stats.get('profiles', []),
+                'embedding_model': em_stats.get('embedding_model', 'unknown'),
+                'collection_name': em_stats.get('collection_name', 'unknown')
+            }
+            posts_count = self.stats['indexed_posts']
         
-        print(f"\n✓ Sistema pronto com {self.stats['indexed_posts']} posts indexados")
+        print(f"\n✓ Sistema pronto com {posts_count} posts indexados")
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -203,16 +212,18 @@ class InstagramRAGApp:
         Returns:
             HTML formatado com estatísticas
         """
-        stats = self.rag.get_system_stats()
+        # self.stats já foi populado no __init__
+        generation_model = self.agent.generation_model if self.use_agent else self.rag.generation_model
         
         html = f"""
         <div style='padding: 20px; background-color: #f0f8ff; border-radius: 10px; border: 1px solid #1DA1F2;'>
             <h3 style='margin-top: 0; color: #1DA1F2;'>📊 Estatísticas do Sistema</h3>
             <ul style='list-style-type: none; padding: 0;'>
-                <li>📝 <strong>Posts indexados:</strong> {stats['indexed_posts']}</li>
-                <li>👥 <strong>Perfis:</strong> {', '.join(['@' + p for p in stats['profiles']])}</li>
-                <li>🧠 <strong>Modelo de embedding:</strong> {stats['embedding_model']}</li>
-                <li>💬 <strong>Modelo de geração:</strong> {stats['generation_model']}</li>
+                <li>📝 <strong>Posts indexados:</strong> {self.stats['indexed_posts']}</li>
+                <li>👥 <strong>Perfis:</strong> {', '.join(['@' + p for p in self.stats['profiles']])}</li>
+                <li>🧠 <strong>Modelo de embedding:</strong> {self.stats['embedding_model']}</li>
+                <li>💬 <strong>Modelo de geração:</strong> {generation_model}</li>
+                <li>🤖 <strong>Modo:</strong> {'Agente Inteligente' if self.use_agent else 'Clássico (Keywords)'}</li>
             </ul>
         </div>
         """

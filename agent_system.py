@@ -88,20 +88,40 @@ class RAGAgent:
    - Exemplo: {"tool": "compare_profiles"}
 
 7. **semantic_search**
-   - Uso: Buscar posts por conteúdo/tema usando busca semântica
-   - Parâmetros: query (str), n_results (int), profile (str, opcional)
-   - Exemplo: {"tool": "semantic_search", "query": "HUAP hospital", "n_results": 5}
+   - Uso: Buscar posts por CONTEÚDO/TEMA usando busca semântica vetorial
+   - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
+   - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional)
+   - Exemplo: {"tool": "semantic_search", "query": "HUAP hospital atendimento saúde", "n_results": 8}
+   - IMPORTANTE: Reformule a query do usuário para termos mais específicos e relevantes
 
 ## PERFIS DISPONÍVEIS:
 - dceuff (Diretório Central dos Estudantes)
 - reitor (Reitor da UFF)
 - vicereitor (Vice-Reitor da UFF)
 
+## DIRETRIZES CRÍTICAS:
+
+### Use SEMANTIC_SEARCH quando:
+✅ Pergunta sobre CONTEÚDO: "o que foi dito sobre X", "posts que mencionam Y", "falar sobre Z"
+✅ Busca por TEMA: "aparições públicas", "eventos", "anúncios", "opiniões sobre"
+✅ Perguntas ABERTAS: "como X tratou Y", "qual posicionamento sobre Z"
+✅ TEMPORAL + CONTEÚDO: "o que foi dito em 2024 sobre X"
+✅ Contexto específico: "última aparição pública", "pronunciamento sobre"
+
+### Use FERRAMENTAS ESTRUTURADAS quando:
+✅ RANKING: "mais curtidos", "top 10", "maior engajamento"
+✅ MÉTRICAS: "quantos posts", "média de curtidas", "estatísticas"
+✅ COMPARAÇÕES NUMÉRICAS: "qual perfil tem mais X"
+✅ FILTROS TEMPORAIS PUROS: "posts da última semana" (sem contexto de conteúdo)
+
+### COMBINE FERRAMENTAS quando:
+✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
+✅ Precisa de CONTEXTO + RANKING: busca semântica + ordenação
+
 ## INSTRUÇÕES:
-- Escolha a(s) ferramenta(s) mais apropriada(s) para responder a pergunta
-- Você pode usar MÚLTIPLAS ferramentas se necessário
-- Para perguntas sobre quantidade/ranking, prefira ferramentas estruturadas
-- Para perguntas sobre conteúdo/tema, use semantic_search
+- Analise se a pergunta é sobre CONTEÚDO (use semantic_search) ou MÉTRICAS (use tools estruturadas)
+- Você pode usar MÚLTIPLAS ferramentas em sequência
+- Ao usar semantic_search, REFORMULE a query para termos mais específicos
 - Retorne APENAS um JSON válido, sem texto adicional
 """
 
@@ -143,7 +163,7 @@ EXEMPLOS:
 
 Pergunta: "Quais foram os 5 posts mais curtidos?"
 {{
-    "reasoning": "Usuário quer ranking por curtidas, usar ferramenta estruturada",
+    "reasoning": "Ranking numérico por curtidas - métrica pura",
     "actions": [
         {{"tool": "get_top_posts_by_likes", "params": {{"limit": 5}}}}
     ]
@@ -151,15 +171,31 @@ Pergunta: "Quais foram os 5 posts mais curtidos?"
 
 Pergunta: "Me fale sobre posts do HUAP"
 {{
-    "reasoning": "Pergunta sobre conteúdo específico, usar busca semântica",
+    "reasoning": "Pergunta sobre CONTEÚDO específico (HUAP), precisa busca semântica",
     "actions": [
-        {{"tool": "semantic_search", "params": {{"query": "HUAP hospital", "n_results": 5}}}}
+        {{"tool": "semantic_search", "params": {{"query": "HUAP hospital universitário atendimento saúde", "n_results": 8}}}}
+    ]
+}}
+
+Pergunta: "Qual foi a última aparição pública do reitor?"
+{{
+    "reasoning": "Pergunta sobre CONTEÚDO (aparição pública) com filtro temporal e de perfil. Usar busca semântica com query otimizada",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "reitor aparição pública evento pronunciamento presença cerimônia", "n_results": 10, "profile": "reitor"}}}}
+    ]
+}}
+
+Pergunta: "O que estão falando do reitor em 2024?"
+{{
+    "reasoning": "Pergunta sobre CONTEÚDO relacionado ao reitor. Busca semântica com filtro de perfil",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "reitor UFF ações gestão decisões anúncios", "n_results": 10}}}}
     ]
 }}
 
 Pergunta: "Compare o engajamento entre reitor e DCE"
 {{
-    "reasoning": "Comparação de estatísticas entre perfis",
+    "reasoning": "Comparação de MÉTRICAS estatísticas entre perfis",
     "actions": [
         {{"tool": "compare_profiles", "params": {{}}}}
     ]
@@ -167,14 +203,34 @@ Pergunta: "Compare o engajamento entre reitor e DCE"
 
 Pergunta: "Qual foi o post mais curtido recente do reitor?"
 {{
-    "reasoning": "Combina recente + curtidas + filtro de perfil",
+    "reasoning": "Combina MÉTRICA (curtidas) + temporal (recente) + perfil. Ferramenta estruturada resolve",
     "actions": [
-        {{"tool": "get_recent_posts", "params": {{"days": 30, "limit": 20, "profile": "reitor"}}}},
         {{"tool": "get_top_posts_by_likes", "params": {{"limit": 1, "profile": "reitor"}}}}
     ]
 }}
 
-IMPORTANTE: Retorne APENAS o JSON, nada mais!
+Pergunta: "Posts sobre pesquisa científica que tiveram mais engajamento"
+{{
+    "reasoning": "Combina CONTEÚDO (pesquisa) + MÉTRICA (engajamento). Usar busca semântica primeiro",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "pesquisa científica ciência laboratório estudo investigação", "n_results": 20}}}},
+        {{"tool": "get_posts_by_engagement", "params": {{"limit": 5}}}}
+    ]
+}}
+
+Pergunta: "O que o DCE publicou sobre greve na última semana?"
+{{
+    "reasoning": "CONTEÚDO (greve) + temporal (última semana) + perfil. Busca semântica com filtro temporal",
+    "actions": [
+        {{"tool": "get_recent_posts", "params": {{"days": 7, "limit": 30, "profile": "dceuff"}}}},
+        {{"tool": "semantic_search", "params": {{"query": "greve paralisação mobilização protesto reivindicação", "n_results": 10, "profile": "dceuff"}}}}
+    ]
+}}
+
+IMPORTANTE: 
+- Para CONTEÚDO/TEMA → semantic_search (sempre reformule query)
+- Para MÉTRICAS/RANKING → ferramentas estruturadas
+- Retorne APENAS o JSON, nada mais!
 """
 
         try:
@@ -285,11 +341,27 @@ IMPORTANTE: Retorne APENAS o JSON, nada mais!
                 n_results = params.get('n_results', 5)
                 profile = params.get('profile')
                 
-                return self.embedding_manager.search(
-                    query_text=query,
+                # Busca no embedding manager
+                raw_results = self.embedding_manager.search(
+                    query=query,
                     n_results=n_results,
                     profile_filter=profile
                 )
+                
+                # Converte para formato padrão (lista de dicts)
+                if not raw_results or 'ids' not in raw_results or not raw_results['ids']:
+                    return []
+                
+                formatted_results = []
+                for i in range(len(raw_results['ids'][0])):
+                    formatted_results.append({
+                        'id': raw_results['ids'][0][i],
+                        'metadata': raw_results['metadatas'][0][i],
+                        'document': raw_results['documents'][0][i],
+                        'distance': raw_results['distances'][0][i] if 'distances' in raw_results else None
+                    })
+                
+                return formatted_results
             
             else:
                 print(f"⚠️ Ferramenta desconhecida: {tool}")
