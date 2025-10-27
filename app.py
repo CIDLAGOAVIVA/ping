@@ -568,7 +568,7 @@ class InstagramRAGApp:
             message: Mensagem do usuário
             history: Histórico do chat
             n_results: Número de posts a recuperar (ignorado no modo agente)
-            profile_filter: Filtro de perfil
+            profile_filter: Filtro de perfil (string com um ou múltiplos perfis separados por vírgula)
             
         Returns:
             Tupla (resposta, fontes_html)
@@ -577,7 +577,17 @@ class InstagramRAGApp:
             return "Por favor, faça uma pergunta.", ""
         
         # Processa filtro de perfil
-        profile = profile_filter if profile_filter != "Todos" else None
+        # Se múltiplos perfis selecionados (ex: "dceuff, reitor"), 
+        # não filtra por perfil (busca em todos)
+        # Se um único perfil, passa para filtro
+        profile = None
+        if profile_filter and profile_filter != "Todos":
+            if "," in profile_filter:
+                # Múltiplos perfis: não filtra (busca em todos os selecionados)
+                profile = None
+            else:
+                # Um único perfil: filtra
+                profile = profile_filter.strip()
         
         # Executa query
         if self.use_agent:

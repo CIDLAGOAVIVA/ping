@@ -161,16 +161,19 @@ class RAGAgent:
    - Parâmetros: nenhum
    - Exemplo: {"tool": "get_news_statistics"}
 
-## PERFIS DISPONÍVEIS:
-- dceuff (Diretório Central dos Estudantes)
-- reitor (Reitor ATUAL da UFF - posts do Instagram)
-- vicereitor (Vice-Reitor ATUAL da UFF - posts do Instagram)
-- noticias (Notícias sobre a UFF e Roberto Salles/Sales - ex-reitor)
+## PERFIS DISPONÍVEIS (Instagram):
+- @dceuff (Diretório Central dos Estudantes)
+- @reitor (Reitor ATUAL da UFF - Antônio Cláudio Nóbrega 2023-2025)
+- @vicereitor (Vice-Reitor ATUAL da UFF)
+
+## FONTES DE DADOS AUXILIARES:
+- Notícias/Arquivo: Conteúdo histórico sobre a UFF e ex-reitor Roberto Salles (2009-2018)
+  - Use para perguntas sobre Roberto Salles/Sales ou eventos passados
 
 ## CONTEXTO IMPORTANTE:
 - **Roberto Salles (ou Roberto Sales)** foi REITOR DA UFF entre 2009-2018
 - Notícias sobre "reitor da UFF" do período 2009-2018 referem-se a Roberto Salles
-- Posts atuais (2023-2025) do perfil @reitor referem-se ao REITOR ATUAL (não Roberto Salles)
+- Posts atuais (2023-2025) do perfil @reitor referem-se ao REITOR ATUAL (Antônio Cláudio Nóbrega)
 - Para perguntas sobre Roberto Salles: SEMPRE buscar em NOTÍCIAS, nunca em posts atuais
 
 ## DIRETRIZES CRÍTICAS:
@@ -243,8 +246,27 @@ class RAGAgent:
 Pergunta do usuário: "{user_question}"
 {f'Perfil filtrado: {profile_filter}' if profile_filter else 'Sem filtro de perfil'}
 
+## ⚠️ IMPORTANTE - PERFIS vs FONTES:
+**PERFIS (Instagram - Posts atuais):**
+- @dceuff (Diretório Central dos Estudantes)
+- @reitor (Reitor ATUAL: Antônio Cláudio Nóbrega 2023-2025)
+- @vicereitor (Vice-Reitor ATUAL: Fábio Barbosa Passos)
+
+**FONTES AUXILIARES (NÃO são perfis):**
+- Notícias/Arquivo: Para perguntas sobre ex-reitor Roberto Salles ou eventos históricos
+  - Use ferramentas: search_news_by_person, get_news_articles, semantic_search com content_type_filter='news'
+
+## 📅 DATAS CRÍTICAS (NÃO CONFUNDA!):
+- **Roberto de Souza Salles**: Reitor de **23 de novembro de 2006 até 18 de novembro de 2014**
+  - Saiu do cargo em 2014, NÃO foi reeleito
+  - Depois de 2014, foi apenas candidato em eleições (NÃO reitor)
+- **Antônio Cláudio da Nóbrega**: Reitor de 2014-2018 (eleito em 2014)
+- **Reitor ATUAL (2023-2025)**: Antônio Cláudio Nóbrega
+
 INFORMAÇÃO CRÍTICA:
-- Roberto Salles (ou Roberto Sales) = EX-REITOR DA UFF (2009-2018)
+- Perguntas sobre "o que Roberto Salles fez" referem-se ao período 2006-2014
+- Perguntas sobre "candidato Roberto Salles" referem-se a 2018 (quando disputou mas perdeu)
+- Roberto Salles NUNCA foi reitor em 2015, 2016, 2017, 2018+ (alucinação comum)
 - Perguntas sobre ele DEVEM buscar em NOTÍCIAS históricas
 - NÃO confundir com o reitor atual (posts @reitor são de 2023-2025)
 
@@ -734,6 +756,127 @@ IMPORTANTE:
         
         return text
     
+    def _clean_response(self, response: str) -> str:
+        """
+        Remove possíveis vazamentos de prompt ou instruções da resposta.
+        Também detecta e marca alucinações de datas.
+        
+        Args:
+            response: Resposta bruta do LLM
+            
+        Returns:
+            Resposta limpa
+        """
+        import re
+        
+        # Remove seções de "Importante sobre Roberto Salles" que não devem estar na resposta
+        # Remove bloco inteiro de "⚠️ Importante" se não foi perguntado sobre Roberto Salles
+        pattern = r'\n⚠️\s+Importante sobre Roberto Salles.*?(?=\n##|\n[❌✅]|$)'
+        response = re.sub(pattern, '', response, flags=re.DOTALL | re.IGNORECASE)
+        
+        # Remove "Dados exclusivamente baseados" se não é contexto relevante
+        pattern = r'\n✅\s+Dados exclusivamente baseados.*?(?=\n##|\n[❌✅]|$)'
+        response = re.sub(pattern, '', response, flags=re.DOTALL)
+        
+        # VALIDADOR DE DATAS: Detecta erros temporais
+        date_errors = [
+            (r'Roberto Salles.*?reitor.*?2012.*?2018', 'Roberto Salles foi reitor de 2006-2014, NÃO 2012-2018'),
+            (r'Roberto Salles.*?reitor.*?2015.*?2019', 'Roberto Salles foi reitor de 2006-2014, NÃO 2015-2019'),
+            (r'Salles.*?reitor.*?eleito em 2015', 'Roberto Salles foi reitor de 2006-2014. Em 2014 saiu do cargo'),
+            (r'Salles.*?reeleito em 2018', 'Roberto Salles não foi reeleito em 2018 - seu mandato terminou em 2014'),
+        ]
+        
+        has_date_error = False
+        for pattern, correction in date_errors:
+            if re.search(pattern, response, re.IGNORECASE):
+                has_date_error = True
+                print(f"⚠️ DETECÇÃO: Alucinação de data encontrada - {correction}")
+                # Remove linhas que contêm o erro
+                response = re.sub(pattern, f'[CORRIGIDO: {correction}]', response, flags=re.IGNORECASE)
+        
+        # Remove linhas de diretrizes que não devem estar na resposta final
+        lines = response.split('\n')
+        filtered_lines = []
+        for line in lines:
+            # Pula linhas que parecem ser instruções vazadas
+            if any(x in line.lower() for x in ['diretrizes:', 'sua tarefa:', 'regra importante', 'não invente']):
+                continue
+            filtered_lines.append(line)
+        
+        response = '\n'.join(filtered_lines)
+        
+        # Remove múltiplas linhas em branco consecutivas
+        response = re.sub(r'\n\n\n+', '\n\n', response)
+        
+        # Se encontrou erro de data, adiciona aviso ao final
+        if has_date_error:
+            response += (
+                "\n\n⚠️ **AVISO DE CORRIGIR ALUCINAÇÃO**:\n"
+                "A resposta acima foi corrigida automaticamente por conter erros de datas.\n"
+                "**DATA CORRETA**: Roberto de Souza Salles foi reitor da UFF de **23 de novembro de 2006 até 18 de novembro de 2014**.\n"
+                "Qualquer menção a outros períodos contém alucinação do modelo."
+            )
+        
+        return response.strip()
+    
+    def _validate_source_relevance(
+        self, 
+        user_question: str, 
+        all_results: List[Tuple[str, List[Dict[str, Any]]]]
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Valida se as fontes recuperadas são REALMENTE relevantes para a pergunta.
+        Aceita cenários com pessoas reais nos dados, rejeita apenas fictícios.
+        
+        Args:
+            user_question: Pergunta do usuário
+            all_results: Resultados retornados
+            
+        Returns:
+            Tupla (é_válido, warning_message ou None)
+        """
+        question_lower = user_question.lower()
+        
+        # Pessoas REAIS mencionadas nos dados
+        real_people_patterns = [
+            (r'fabio\s+(?:barbosa\s+)?passos?', 'Fábio Barbosa Passos', 'vice-reitor'),
+            (r'fábio\s+(?:barbosa\s+)?passos?', 'Fábio Barbosa Passos', 'vice-reitor'),
+            (r'roberto\s+salles?', 'Roberto Salles', 'ex-reitor 2009-2018'),
+            (r'antonio\s+claudio', 'Antonio Claudio Nóbrega', 'reitor atual'),
+        ]
+        
+        # Detecta menção a pessoas reais
+        import re
+        mentioned_people = []
+        for pattern, name, role in real_people_patterns:
+            if re.search(pattern, question_lower):
+                mentioned_people.append((name, role))
+        
+        # Se menciona pessoas reais, é um cenário válido
+        if mentioned_people:
+            # Verifica se recuperou dados sobre essas pessoas
+            all_context = ""
+            for tool_name, results in all_results:
+                for result in results:
+                    if isinstance(result, dict):
+                        all_context += str(result).lower()
+            
+            # Se recuperou dados relevantes, é válido
+            if len(all_results) > 0 and all_context.strip():
+                return True, None
+            
+            # Se não encontrou dados sobre pessoas reais, indica falta de informação
+            people_str = " e ".join([f"{name} ({role})" for name, role in mentioned_people])
+            return False, (
+                f"⚠️ **Sem informações suficientes**\n\n"
+                f"A pergunta menciona: {people_str}\n\n"
+                f"Porém, os dados indexados não contêm informações adequadas para responder sobre "
+                f"esse cenário específico.\n\n"
+                f"Tente reformular a pergunta com temas ou contextos disponíveis nos dados."
+            )
+        
+        return True, None
+    
     def _synthesize_response(
         self,
         user_question: str,
@@ -751,6 +894,13 @@ IMPORTANTE:
         Returns:
             Resposta final sintetizada
         """
+        # Valida relevância das fontes e detecta cenários fictícios
+        is_valid, simulation_warning = self._validate_source_relevance(user_question, all_results)
+        
+        if not is_valid:
+            return "❌ Não encontrei informações suficientes para responder sua pergunta com os dados disponíveis."
+            return hallucination_warning
+        
         # Monta contexto com todos os resultados
         context = ""
         for tool_name, results in all_results:
@@ -773,11 +923,8 @@ DIRETRIZES:
 5. Organize a informação de forma lógica
 6. Se múltiplas ferramentas foram usadas, integre os resultados de forma coerente
 7. Sempre inclua links dos posts quando disponível
-8. SE A PERGUNTA MENCIONAR "Roberto Salles" ou "Roberto Sales":
-   - SEMPRE esclareça que ele foi reitor da UFF de 2009 a 2018 (EX-REITOR)
-   - NÃO tem posts atuais no Instagram (apenas notícias históricas de 2009-2018)
-   - O reitor ATUAL é Antonio Claudio Nobrega (2023-presente)
-   - Deixe claro que informações sobre ele estão em arquivo histórico
+8. NÃO repita instruções ou seções de "Diretrizes" na sua resposta
+9. NÃO inclua avisos sobre Roberto Salles a menos que a pergunta mencione especificamente sobre ele
 
 NÃO invente informações que não estão no contexto!
 """
@@ -790,15 +937,17 @@ NÃO invente informações que não estão no contexto!
                         'role': 'system',
                         'content': '''Você é um assistente especializado em análise de posts do Instagram da UFF.
 
-INFORMAÇÕES CRÍTICAS:
-- Reitor ATUAL da UFF (2023-presente): Antonio Claudio Nobrega (ou Antônio Cláudio Nóbrega)
-- Ex-reitor (2009-2018): Roberto Salles (ou Roberto Sales) - NÃO tem posts atuais
+INFORMAÇÕES CRÍTICAS - DATAS EXATAS:
+- Reitor ATUAL (2023-2025): Antônio Cláudio Nóbrega
+- Ex-reitor (23 de novembro de 2006 até 18 de novembro de 2014): Roberto de Souza Salles
+- NÃO confunda: Roberto Salles saiu do cargo em 2014, NÃO foi reitor de 2015 em diante
+- Em 2018, Salles foi CANDIDATO mas perdeu a eleição (não era reitor)
 
-REGRA IMPORTANTE: Se a pergunta mencionar Roberto Salles/Sales, SEMPRE:
-1. Esclareça que foi reitor de 2009-2018 (EX-reitor)
-2. Indique que não tem posts atuais no Instagram
-3. Mencione que o reitor atual é Antonio Claudio Nobrega
-4. Use dados apenas de arquivo histórico (2009-2018)
+REGRA IMPORTANTE: Se mencionar Roberto Salles, SEMPRE:
+1. Use período CORRETO: 2006-2014 (quando foi reitor)
+2. Se for sobre 2018: mencione que foi CANDIDATO, não reitor
+3. Indique que ele não tem posts atuais no Instagram
+4. Use dados apenas de arquivo histórico
 
 Responda de forma clara, objetiva e bem formatada usando APENAS os dados fornecidos.'''
                     },
@@ -813,7 +962,15 @@ Responda de forma clara, objetiva e bem formatada usando APENAS os dados forneci
             if stream:
                 return response
             else:
-                return response['message']['content']
+                # Limpa a resposta de possíveis vazamentos de prompt
+                response_text = response['message']['content']
+                response_text = self._clean_response(response_text)
+                
+                # Adiciona disclaimer se for simulação com contexto fictício
+                if simulation_warning:
+                    response_text += simulation_warning
+                
+                return response_text
         
         except Exception as e:
             return f"❌ Erro ao gerar resposta: {e}"
