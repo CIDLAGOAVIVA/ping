@@ -1,14 +1,105 @@
 """
 Aplicação Gradio para Chat RAG de Posts do Instagram.
-Agora usando sistema de agente inteligente!
+Agora usando sistema de agente inteligente com interface profissional!
 """
 
 import gradio as gr
 from agent_system import RAGAgent
 from rag_system import RAGSystem
+from ping_theme import ping_theme
 from datetime import datetime
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import json
+import os
+from pathlib import Path
+
+
+class HistoryManager:
+    """Gerencia o histórico de perguntas e respostas."""
+    
+    def __init__(self, history_file: str = "chat_history.json"):
+        """
+        Inicializa o gerenciador de histórico.
+        
+        Args:
+            history_file: Arquivo para armazenar o histórico
+        """
+        self.history_file = history_file
+        self.history: List[Dict] = self._load_history()
+    
+    def _load_history(self) -> List[Dict]:
+        """Carrega histórico do arquivo."""
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+    
+    def _save_history(self):
+        """Salva histórico no arquivo."""
+        with open(self.history_file, 'w', encoding='utf-8') as f:
+            json.dump(self.history, f, ensure_ascii=False, indent=2)
+    
+    def add(self, question: str, response: str, profile_filter: str = None, posts_count: int = 0):
+        """
+        Adiciona entrada ao histórico.
+        
+        Args:
+            question: Pergunta do usuário
+            response: Resposta do sistema
+            profile_filter: Filtro de perfil usado
+            posts_count: Número de posts recuperados
+        """
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "question": question,
+            "response": response[:500],  # Armazena resumo
+            "profile_filter": profile_filter,
+            "posts_count": posts_count
+        }
+        self.history.insert(0, entry)  # Mais recente no topo
+        # Mantém apenas os últimos 500 registros
+        if len(self.history) > 500:
+            self.history = self.history[:500]
+        self._save_history()
+    
+    def search(self, query: str) -> List[Dict]:
+        """
+        Busca no histórico.
+        
+        Args:
+            query: Termo de busca
+            
+        Returns:
+            Lista de entradas correspondentes
+        """
+        query_lower = query.lower()
+        return [
+            h for h in self.history
+            if query_lower in h['question'].lower() or 
+               query_lower in h['response'].lower()
+        ]
+    
+    def get_stats(self) -> Dict:
+        """Retorna estatísticas do histórico."""
+        if not self.history:
+            return {"total": 0, "profiles": {}, "avg_response_length": 0}
+        
+        profiles = {}
+        total_response_length = 0
+        
+        for entry in self.history:
+            profile = entry.get('profile_filter', 'Todos')
+            profiles[profile] = profiles.get(profile, 0) + 1
+            total_response_length += len(entry.get('response', ''))
+        
+        return {
+            "total": len(self.history),
+            "profiles": profiles,
+            "avg_response_length": int(total_response_length / len(self.history)) if self.history else 0
+        }
 
 
 class InstagramRAGApp:
@@ -31,6 +122,7 @@ class InstagramRAGApp:
         print("🚀 Iniciando aplicação RAG...")
         
         self.use_agent = use_agent
+        self.history_manager = HistoryManager()
         
         if use_agent:
             # Inicializa sistema de agente inteligente
@@ -502,10 +594,219 @@ class InstagramRAGApp:
                 profile_filter=profile
             )
         
+        # Salva no histórico
+        posts_count = len(posts) if posts else 0
+        self.history_manager.add(
+            question=message,
+            response=response,
+            profile_filter=profile_filter,
+            posts_count=posts_count
+        )
+        
         # Formata fontes
         sources_html = self.format_sources(posts)
         
         return response, sources_html
+    
+    def get_dashboard_html(self) -> str:
+        """
+        Retorna HTML com dashboard de estatísticas profissional.
+        Usa variáveis CSS para compatibilidade com light/dark mode.
+        
+        Returns:
+            HTML formatado com dashboard
+        """
+        history_stats = self.history_manager.get_stats()
+        generation_model = self.agent.generation_model if self.use_agent else self.rag.generation_model
+        
+        # Estatísticas por perfil do histórico
+        profile_stats_html = ""
+        if history_stats['profiles']:
+            for profile, count in sorted(history_stats['profiles'].items(), key=lambda x: x[1], reverse=True):
+                profile_name = profile if profile else "Sem filtro"
+                percentage = (count / history_stats['total']) * 100 if history_stats['total'] > 0 else 0
+                profile_stats_html += f"""
+                <div style='margin: 0.8rem 0;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;'>
+                        <span style='font-weight: 500; color: var(--text-primary);'>{profile_name}</span>
+                        <span style='color: var(--primary); font-weight: 600;'>{count}</span>
+                    </div>
+                    <div style='background: var(--border-primary); height: 8px; border-radius: 4px; overflow: hidden;'>
+                        <div style='background: linear-gradient(90deg, var(--primary), var(--primary-dark)); height: 100%; width: {percentage}%;'></div>
+                    </div>
+                </div>
+                """
+        
+        html = f"""
+        <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
+            <!-- Header do Dashboard -->
+            <div style='margin-bottom: 2rem;'>
+                <h2 style='margin: 0 0 0.5rem 0; color: var(--text-primary); font-size: 1.8rem;'>📊 Dashboard de Estatísticas</h2>
+                <p style='margin: 0; color: var(--text-secondary); font-size: 0.9rem;'>Atualizado em {datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}</p>
+            </div>
+            
+            <!-- Grid de Estatísticas Principais -->
+            <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;'>
+                <!-- Card: Dados Indexados -->
+                <div style='
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 1.5rem;
+                    border-radius: 12px;
+                    box-shadow: var(--shadow-md);
+                    transition: transform 0.3s ease;
+                '>
+                    <div style='display: flex; justify-content: space-between; align-items: flex-start;'>
+                        <div>
+                            <p style='margin: 0; font-size: 0.9rem; opacity: 0.9;'>📝 Registros Indexados</p>
+                            <h3 style='margin: 0.5rem 0 0 0; font-size: 2.5rem;'>{self.stats['indexed_posts']:,}</h3>
+                        </div>
+                        <span style='font-size: 2rem; opacity: 0.8;'>📚</span>
+                    </div>
+                </div>
+                
+                <!-- Card: Fontes -->
+                <div style='
+                    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    color: white;
+                    padding: 1.5rem;
+                    border-radius: 12px;
+                    box-shadow: var(--shadow-md);
+                    transition: transform 0.3s ease;
+                '>
+                    <div style='display: flex; justify-content: space-between; align-items: flex-start;'>
+                        <div>
+                            <p style='margin: 0; font-size: 0.9rem; opacity: 0.9;'>👥 Fontes de Dados</p>
+                            <h3 style='margin: 0.5rem 0 0 0; font-size: 2.5rem;'>{len(self.stats['profiles'])}</h3>
+                        </div>
+                        <span style='font-size: 2rem; opacity: 0.8;'>�</span>
+                    </div>
+                </div>
+                
+                <!-- Card: Consultas Realizadas -->
+                <div style='
+                    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+                    color: white;
+                    padding: 1.5rem;
+                    border-radius: 12px;
+                    box-shadow: var(--shadow-md);
+                    transition: transform 0.3s ease;
+                '>
+                    <div style='display: flex; justify-content: space-between; align-items: flex-start;'>
+                        <div>
+                            <p style='margin: 0; font-size: 0.9rem; opacity: 0.9;'>💬 Consultas Realizadas</p>
+                            <h3 style='margin: 0.5rem 0 0 0; font-size: 2.5rem;'>{history_stats['total']}</h3>
+                        </div>
+                        <span style='font-size: 2rem; opacity: 0.8;'>❓</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Informações do Sistema -->
+            <div style='background: var(--bg-secondary); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border-primary);'>
+                <h3 style='margin: 0 0 1rem 0; color: var(--text-primary);'>🔧 Configuração do Sistema</h3>
+                <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;'>
+                    <div>
+                        <p style='margin: 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; text-transform: uppercase;'>Modelo de Embedding</p>
+                        <p style='margin: 0.3rem 0 0 0; color: var(--text-primary); font-weight: 500;'>{self.stats['embedding_model']}</p>
+                    </div>
+                    <div>
+                        <p style='margin: 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; text-transform: uppercase;'>Modelo de Geração</p>
+                        <p style='margin: 0.3rem 0 0 0; color: var(--text-primary); font-weight: 500;'>{generation_model}</p>
+                    </div>
+                    <div>
+                        <p style='margin: 0; color: var(--text-secondary); font-size: 0.85rem; font-weight: 600; text-transform: uppercase;'>Modo de Operação</p>
+                        <p style='margin: 0.3rem 0 0 0; color: var(--text-primary); font-weight: 500;'>{'🤖 Agente Inteligente' if self.use_agent else '🔧 Sistema Clássico'}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Fontes de Dados -->
+            <div style='background: var(--bg-secondary); border-radius: 12px; padding: 1.5rem; margin-bottom: 2rem; border: 1px solid var(--border-primary);'>
+                <h3 style='margin: 0 0 1rem 0; color: var(--text-primary);'>� Fontes de Dados</h3>
+                <div style='display: flex; gap: 0.8rem; flex-wrap: wrap;'>
+                    {''.join([f"<span style='background: var(--primary); color: white; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600;'>@{profile}</span>" for profile in self.stats['profiles']])}
+                </div>
+            </div>
+            
+            <!-- Distribuição de Consultas por Fonte -->
+            {f'''<div style='background: var(--bg-secondary); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border-primary);'>
+                <h3 style='margin: 0 0 1rem 0; color: var(--text-primary);'>📈 Distribuição de Consultas por Fonte</h3>
+                {profile_stats_html if profile_stats_html else '<p style="color: var(--text-secondary); margin: 0;">Nenhuma consulta realizada ainda.</p>'}
+            </div>''' if history_stats['total'] > 0 else ''}
+        </div>
+        """
+        return html
+    
+    def get_history_html(self, search_query: str = None) -> str:
+        """
+        Retorna HTML com histórico de perguntas.
+        Usa variáveis CSS para compatibilidade com light/dark mode.
+        
+        Args:
+            search_query: Termo para buscar no histórico
+            
+        Returns:
+            HTML formatado com histórico
+        """
+        # Busca ou obtém todo o histórico
+        if search_query:
+            entries = self.history_manager.search(search_query)
+        else:
+            entries = self.history_manager.history[:50]  # Últimos 50
+        
+        if not entries:
+            return """
+            <div style='padding: 2rem; text-align: center; color: var(--text-secondary);'>
+                <p style='font-size: 1.1rem;'>📭 Nenhuma consulta encontrada no histórico</p>
+            </div>
+            """
+        
+        html = f"""
+        <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
+            <h2 style='margin: 0 0 1.5rem 0; color: var(--text-primary);'>📚 Histórico de Consultas</h2>
+            <p style='color: var(--text-secondary); margin: 0 0 1.5rem 0;'>Total: <strong>{len(entries)}</strong> registros</p>
+        """
+        
+        for i, entry in enumerate(entries, 1):
+            try:
+                timestamp = datetime.fromisoformat(entry['timestamp'])
+                date_str = timestamp.strftime('%d/%m/%Y às %H:%M')
+            except:
+                date_str = "Data desconhecida"
+            
+            profile_badge = f"@{entry['profile_filter']}" if entry.get('profile_filter') else "🌐 Todos"
+            posts_info = f"📊 {entry.get('posts_count', 0)} registros encontrados"
+            
+            html += f"""
+            <div style='
+                background: var(--bg-secondary);
+                border: 1px solid var(--border-primary);
+                border-radius: 12px;
+                padding: 1.2rem;
+                margin-bottom: 1rem;
+                box-shadow: var(--shadow-sm);
+                transition: all 0.3s ease;
+            ' onmouseover="this.style.boxShadow='var(--shadow-md)'; this.style.transform='translateY(-2px)'" 
+               onmouseout="this.style.boxShadow='var(--shadow-sm)'; this.style.transform='translateY(0)'">
+                <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.8rem;'>
+                    <div>
+                        <span style='background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: inline-block; margin-right: 0.5rem;'>#{i}</span>
+                        <span style='background: var(--bg-tertiary); color: var(--text-primary); padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.8rem; display: inline-block;'>{profile_badge}</span>
+                    </div>
+                    <span style='color: var(--text-secondary); font-size: 0.85rem;'>🕐 {date_str}</span>
+                </div>
+                <p style='margin: 0.8rem 0; font-weight: 600; color: var(--text-primary);'>❓ {entry['question']}</p>
+                <p style='margin: 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;'>{entry['response']}</p>
+                <div style='display: flex; gap: 0.5rem; margin-top: 0.8rem; font-size: 0.85rem;'>
+                    <span style='color: var(--primary);'>💬</span>
+                    <span style='color: var(--text-secondary);'>{posts_info}</span>
+                </div>
+            </div>
+            """
+        
+        html += "</div>"
+        return html
     
     def get_stats_html(self) -> str:
         """
@@ -533,170 +834,235 @@ class InstagramRAGApp:
     
     def create_interface(self) -> gr.Blocks:
         """
-        Cria interface Gradio moderna e amigável.
+        Cria interface Gradio profissional com abas navegáveis.
+        Tema claro como padrão com suporte total a dark mode.
         
         Returns:
             Interface Gradio configurada
         """
-        # CSS customizado para deixar mais bonito
-        custom_css = """
-        .header-container {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 2rem;
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            color: white;
-            text-align: center;
-        }
-        .stats-box {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 1rem;
-            border-radius: 8px;
-            margin: 1rem 0;
-        }
-        .example-btn {
-            margin: 0.3rem !important;
-            background: white !important;
-            border: 1px solid #e0e0e0 !important;
-        }
-        .example-btn:hover {
-            background: #f0f0f0 !important;
-            border-color: #667eea !important;
-        }
-        """
-        
         with gr.Blocks(
-            title="UFF Instagram RAG - Análise Inteligente",
-            theme=gr.themes.Soft(
-                primary_hue="purple",
-                secondary_hue="blue",
-                font=["Inter", "sans-serif"]
-            ),
-            css=custom_css
+            title="PING - UFF ANALYTICS",
+            theme=ping_theme
         ) as app:
             
-            # Header limpo e moderno
-            with gr.Row():
-                with gr.Column():
+            # Header principal
+            gr.HTML(f"""
+            <div class="header-container">
+                <h1>🎓 PING - UFF ANALYTICS</h1>
+            </div>
+            """)
+            
+            # Interface com abas
+            with gr.Tabs():
+                # ===== ABA 1: CHAT =====
+                with gr.TabItem("💬 Chat"):
+                    with gr.Row():
+                        with gr.Column(scale=7, elem_classes="chat-container"):
+                            # Área de chat
+                            chatbot = gr.Chatbot(
+                                label="Conversa",
+                                height=600,
+                                show_copy_button=True,
+                                show_label=False,
+                                type="tuples"
+                            )
+                            
+                            # Input de mensagem
+                            with gr.Row():
+                                msg = gr.Textbox(
+                                    label="",
+                                    placeholder="Digite sua pergunta... Ex: Qual foi a última aparição do reitor?",
+                                    lines=2,
+                                    scale=9,
+                                    show_label=False
+                                )
+                                send_btn = gr.Button(
+                                    "✉️ Enviar", 
+                                    scale=1, 
+                                    variant="primary",
+                                    size="lg"
+                                )
+                            
+                            # Botões de ação
+                            with gr.Row():
+                                clear_btn = gr.Button("🗑️ Limpar", size="sm", variant="secondary", scale=2)
+                                copy_btn = gr.Button("📋 Copiar Último", size="sm", scale=2)
+                                gr.Markdown("")  # Spacer
+                            
+                            # Fontes recuperadas
+                            with gr.Accordion("📚 Posts Recuperados (Fontes)", open=False):
+                                sources = gr.HTML()
+                        
+                        # Painel lateral
+                        with gr.Column(scale=3, elem_classes="sidebar-config"):
+                            gr.Markdown("### ⚙️ Configurações")
+                            
+                            # Botões de perfil como checkboxes
+                            profile_filter = gr.CheckboxGroup(
+                                choices=["@" + p for p in self.stats['profiles']],
+                                value=["@" + p for p in self.stats['profiles']],  # Todos selecionados por padrão
+                                label="📊 Filtro de Perfis (selecione um ou mais)",
+                                interactive=True,
+                                elem_classes="profile-checkbox-group"
+                            )
+                            
+                            if not self.use_agent:
+                                n_results = gr.Slider(
+                                    minimum=1,
+                                    maximum=15,
+                                    value=5,
+                                    step=1,
+                                    label="Nº Posts"
+                                )
+                            else:
+                                n_results = gr.Number(value=5, visible=False)
+                            
+                            gr.Markdown("---")
+                            gr.Markdown("### 💡 Sugestões")
+                            
+                            # Exemplos dinâmicos
+                            example_questions = [
+                                ("🏆", "Post mais curtido"),
+                                ("📊", "Comparar perfis"),
+                                ("🔍", "Posts sobre HUAP"),
+                                ("🎓", "Menções estudantes"),
+                                ("❤️", "Tendências")
+                            ]
+                            
+                            for emoji, question in example_questions:
+                                gr.Button(
+                                    f"{emoji} {question}",
+                                    size="sm",
+                                    elem_classes="example-btn"
+                                ).click(
+                                    lambda q=question: q,
+                                    outputs=msg
+                                )
+                            
+                            gr.Markdown("---")
+                            gr.Markdown("**🔬 Modo de IA:**")
+                            mode_text = "🤖 Agente (LLM decide ferramentas)" if self.use_agent else "🔍 Clássico (Keywords)"
+                            gr.Markdown(f"__{mode_text}__")
+                
+                # ===== ABA 2: ESTATÍSTICAS =====
+                with gr.TabItem("📊 Estatísticas"):
+                    dashboard_html = gr.HTML(value=self.get_dashboard_html())
+                
+                # ===== ABA 3: HISTÓRICO =====
+                with gr.TabItem("📚 Histórico"):
+                    with gr.Row():
+                        with gr.Column(scale=8):
+                            history_html = gr.HTML(value=self.get_history_html())
+                        with gr.Column(scale=2):
+                            gr.Markdown("### � Buscar")
+                            search_box = gr.Textbox(
+                                label="",
+                                placeholder="Buscar histórico...",
+                                show_label=False
+                            )
+                            search_btn = gr.Button("Buscar", variant="primary", size="lg")
+                            
+                            def search_history(query):
+                                return self.get_history_html(search_query=query if query else None)
+                            
+                            search_btn.click(
+                                search_history,
+                                inputs=search_box,
+                                outputs=history_html
+                            )
+                            
+                            search_box.submit(
+                                search_history,
+                                inputs=search_box,
+                                outputs=history_html
+                            )
+                            
+                            clear_search = gr.Button("Limpar", size="sm")
+                            clear_search.click(
+                                lambda: self.get_history_html(),
+                                outputs=history_html
+                            )
+                
+                # ===== ABA 4: DOCUMENTAÇÃO =====
+                with gr.TabItem("📖 Documentação"):
                     gr.HTML(f"""
-                    <div class="header-container" style="color: #ffffff !important;">
-                        <h1 style="margin: 0; font-size: 2.5rem; color: #ffffff !important;">📱 UFF Instagram Analytics</h1>
-                        <p style="margin: 0.8rem 0 0 0; font-size: 1rem; opacity: 0.85; color: #ffffff !important;">
-                            Faça perguntas sobre os {self.stats['indexed_posts']:,} posts dos perfis oficiais da UFF
-                        </p>
+                    <div style='padding: 2rem;'>
+                        <h2 style='color: #333;'>📖 Como Usar o Sistema</h2>
+                        
+                        <div style='background: #f0f4ff; border-left: 4px solid #667eea; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                            <h3 style='margin-top: 0; color: #667eea;'>✨ Perguntas Suportadas</h3>
+                            <ul>
+                                <li><strong>Estatísticas:</strong> "Qual é o post mais curtido?" "Quantos posts tem?"</li>
+                                <li><strong>Busca:</strong> "Posts sobre HUAP" "Mencione iniciativas ambientais"</li>
+                                <li><strong>Comparações:</strong> "Compare @reitor e @dceuff" "Qual perfil tem mais engajamento?"</li>
+                                <li><strong>Análise:</strong> "Qual é o sentimento geral?" "Que tópicos mais aparecem?"</li>
+                                <li><strong>Tendências:</strong> "Posts mais comentados" "Conteúdo de 2024"</li>
+                            </ul>
+                        </div>
+                        
+                        <div style='background: #f1f8f4; border-left: 4px solid #4caf50; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                            <h3 style='margin-top: 0; color: #4caf50;'>💚 Dicas</h3>
+                            <ul>
+                                <li>Use linguagem natural - não precisa ser exato</li>
+                                <li>Combine filtros de perfil com perguntas para resultados mais específicos</li>
+                                <li>Verifique o histórico para rever respostas anteriores</li>
+                                <li>O sistema entende perguntas em português natural</li>
+                            </ul>
+                        </div>
+                        
+                        <div style='background: #fff8f0; border-left: 4px solid #ff9800; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                            <h3 style='margin-top: 0; color: #ff9800;'>🔧 Configurações</h3>
+                            <p>
+                                <strong>Filtro de Perfis:</strong> Selecione um ou mais perfis clicando nos botões. Todos os selecionados serão incluídos na busca<br>
+                                <strong>Nº Posts:</strong> Ajuste quantos posts recuperar (se em modo clássico)<br>
+                                <strong>Abas:</strong> Navigate entre Chat, Estatísticas, Histórico e esta Documentação
+                            </p>
+                        </div>
+                        
+                        <div style='background: #f0f0f0; border-radius: 8px; padding: 1.5rem; margin-top: 2rem;'>
+                            <h3 style='margin-top: 0; color: #333;'>ℹ️ Sobre o Sistema</h3>
+                            <ul style='color: #666; font-size: 0.9rem;'>
+                                <li><strong>Posts Indexados:</strong> {self.stats['indexed_posts']:,}</li>
+                                <li><strong>Perfis Monitorados:</strong> {', '.join(['@' + p for p in self.stats['profiles']])}</li>
+                                <li><strong>Modelo de Embedding:</strong> {self.stats['embedding_model']}</li>
+                                <li><strong>Modelo de Geração:</strong> Local via Ollama</li>
+                                <li><strong>Banco de Dados:</strong> ChromaDB (Vetorial)</li>
+                                <li><strong>Interface:</strong> Gradio 4.x</li>
+                            </ul>
+                        </div>
                     </div>
                     """)
             
-            with gr.Row():
-                with gr.Column(scale=7):
-                    # Área de chat principal
-                    chatbot = gr.Chatbot(
-                        label="💬 Conversa",
-                        height=500,
-                        show_copy_button=True,
-                        avatar_images=(None, "assets/agent_avatar.png"),
-                        bubble_full_width=False
-                    )
-                    
-                    # Input melhorado
-                    with gr.Row():
-                        msg = gr.Textbox(
-                            label="",
-                            placeholder="Digite sua pergunta... Ex: Qual foi a última aparição do reitor?",
-                            lines=2,
-                            scale=9,
-                            show_label=False
-                        )
-                        send_btn = gr.Button(
-                            "Enviar 🚀", 
-                            scale=1, 
-                            variant="primary",
-                            size="lg"
-                        )
-                    
-                    with gr.Row():
-                        clear_btn = gr.Button("🗑️ Limpar Conversa", size="sm", variant="secondary")
-                        gr.Markdown("<div style='flex-grow: 1;'></div>")  # Spacer
-                    
-                                        # Fontes com accordion
-                    with gr.Accordion("📚 Posts Recuperados (Fontes)", open=False):
-                        sources = gr.HTML()
-                
-                with gr.Column(scale=3):
-                    # Painel lateral simplificado
-                    gr.Markdown("### ⚙️ Configurações")
-                    
-                    profile_filter = gr.Dropdown(
-                        choices=["🌐 Todos os Perfis"] + ["@" + p for p in self.stats['profiles']],
-                        value="🌐 Todos os Perfis",
-                        label="Filtrar por Perfil"
-                    )
-                    
-                    if not self.use_agent:
-                        n_results = gr.Slider(
-                            minimum=1,
-                            maximum=10,
-                            value=5,
-                            step=1,
-                            label="Posts a recuperar"
-                        )
-                    else:
-                        n_results = gr.Number(value=5, visible=False)
-                    
-                    # Estatísticas compactas
-                    with gr.Accordion("📊 Estatísticas", open=False):
-                        gr.HTML(value=self.get_stats_html())
-                    
-                    # Exemplos compactos
-                    gr.Markdown("---")
-                    gr.Markdown("### 💡 Exemplos")
-                    
-                    if self.use_agent:
-                        example_questions = [
-                            ("🏆", "Post mais curtido do reitor"),
-                            ("📊", "Compare os perfis"),
-                            ("🔍", "Posts sobre HUAP"),
-                            ("🗓️", "Publicações em 2024"),
-                            ("💬", "Última aparição do reitor")
-                        ]
-                    else:
-                        example_questions = [
-                            ("📝", "Posts recentes do DCE"),
-                            ("🏥", "Posts sobre HUAP"),
-                            ("❤️", "Posts mais curtidos"),
-                            ("🔬", "Sobre pesquisa"),
-                            ("🎓", "Mencionam estudantes")
-                        ]
-                    
-                    for emoji, question in example_questions:
-                        btn = gr.Button(
-                            f"{emoji} {question}",
-                            size="sm",
-                            elem_classes="example-btn"
-                        )
-                        btn.click(
-                            lambda q=question: q,
-                            outputs=msg
-                        )
-            
-            # Lógica do chat
+            # Lógica de chat
             def respond(message, chat_history, n_res, profile_filt):
                 if not message.strip():
                     return message, chat_history, ""
                 
-                # Processa filtro de perfil
-                if profile_filt.startswith("🌐"):
-                    profile = None
+                # Processa filtro de múltiplos perfis
+                if isinstance(profile_filt, list):
+                    if len(profile_filt) > 0:
+                        # Se múltiplos perfis selecionados
+                        profiles = [p.replace("@", "") for p in profile_filt]
+                        profile = ", ".join(profiles)  # "dceuff, reitor"
+                    else:
+                        # Se nenhum selecionado, usa todos como fallback
+                        profile = "Todos"
+                elif isinstance(profile_filt, str):
+                    # Compatibilidade com formato antigo (dropdown)
+                    if profile_filt.startswith("🌐"):
+                        profile = "Todos"
+                    else:
+                        profile = profile_filt.replace("@", "")
                 else:
-                    profile = profile_filt.replace("@", "")
+                    # Nenhum perfil selecionado
+                    profile = "Todos"
                 
                 # Gera resposta
                 response, sources_html = self.chat_response(
                     message, 
                     chat_history, 
                     n_res, 
-                    profile if profile else "Todos"
+                    profile
                 )
                 
                 # Atualiza histórico
@@ -704,7 +1070,7 @@ class InstagramRAGApp:
                 
                 return "", chat_history, sources_html
             
-            # Eventos
+            # Eventos do chat
             msg.submit(
                 respond,
                 inputs=[msg, chatbot, n_results, profile_filter],
@@ -722,17 +1088,16 @@ class InstagramRAGApp:
                 outputs=[chatbot, sources]
             )
             
-            # Rodapé limpo
-            gr.Markdown("---")
+            # Rodapé
             gr.HTML(f"""
-            <div style="text-align: center; padding: 1rem; color: #999; font-size: 0.85rem;">
-                <p style="margin: 0.3rem 0;">
+            <div class="footer-custom">
+                <p style="margin: 0; font-weight: 500;">
                     🎓 Universidade Federal Fluminense • 
                     {self.stats['indexed_posts']:,} posts • 
                     {len(self.stats['profiles'])} perfis
                 </p>
-                <p style="margin: 0.3rem 0; font-size: 0.75rem; color: #bbb;">
-                    Powered by Ollama • ChromaDB • Gradio
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.75rem;">
+                    ⚡ Powered by Ollama • ChromaDB • Gradio
                 </p>
             </div>
             """)

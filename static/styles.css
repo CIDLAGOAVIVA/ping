@@ -1,0 +1,376 @@
+/* ============================================
+   PING - UFF ANALYTICS - Stylesheet
+   Theme: Light (default) & Dark Mode
+   ============================================ */
+
+/* ===== VARIÁVEIS DE CORES - TEMA CLARO (PADRÃO) ===== */
+:root {
+  /* Cores Primárias */
+  --primary: #667eea;
+  --primary-dark: #764ba2;
+  --primary-light: #e8ebf8;
+  
+  /* Cores Secundárias */
+  --secondary: #f093fb;
+  --success: #4caf50;
+  --warning: #ff9800;
+  --danger: #f44336;
+  
+  /* Cores de Fundo */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #f0f0f0;
+  
+  /* Cores de Texto */
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+  --text-light: #cccccc;
+  
+  /* Cores de Borda */
+  --border-primary: #e0e0e0;
+  --border-secondary: #d0d0d0;
+  --border-light: #e8e8e8;
+  
+  /* Sombras */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* ===== TEMA ESCURO ===== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Cores de Fundo - Dark */
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2a2a2a;
+    --bg-tertiary: #333333;
+    
+    /* Cores de Texto - Dark */
+    --text-primary: #f0f0f0;
+    --text-secondary: #cccccc;
+    --text-tertiary: #999999;
+    --text-light: #666666;
+    
+    /* Cores de Borda - Dark */
+    --border-primary: #444444;
+    --border-secondary: #333333;
+    --border-light: #2a2a2a;
+    
+    /* Sombras - Dark */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ===== RESET E ESTILOS GLOBAIS ===== */
+html {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+body {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* ===== FORÇAR ESTILOS GRADIO ===== */
+.gradio-container {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.block {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.chatbot {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+.gr-chatbot {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===== HEADER CONTAINER ===== */
+.header-container {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  border-radius: 15px;
+  margin-bottom: 2rem;
+  color: white;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+}
+
+.header-container h1 {
+  margin: 0 !important;
+  font-size: 2.5rem !important;
+  color: white !important;
+  font-weight: 700 !important;
+}
+
+.header-container p {
+  margin: 0.5rem 0 !important;
+  font-size: 1rem !important;
+  opacity: 0.95 !important;
+  color: white !important;
+  font-weight: 400 !important;
+}
+
+/* ===== CONTAINERS PRINCIPAIS ===== */
+.chat-container {
+  background: var(--bg-primary) !important;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 0 !important;
+}
+
+.sidebar-config {
+  background: var(--bg-secondary) !important;
+  border-left: 1px solid var(--border-primary);
+  padding: 1.5rem;
+  border-radius: 0 12px 12px 0;
+  color: var(--text-primary);
+}
+
+.sidebar-config h3,
+.sidebar-config h4 {
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* ===== CARDS DE ESTATÍSTICAS ===== */
+.stat-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  text-align: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+  color: white;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  opacity: 0.95;
+  margin: 0;
+  color: white;
+}
+
+/* ===== BOTÕES ===== */
+.example-btn {
+  margin: 0.4rem !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  transition: all 0.3s ease !important;
+  font-weight: 500 !important;
+}
+
+.example-btn:hover {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  border-color: transparent !important;
+  transform: translateY(-2px);
+}
+
+button {
+  color: var(--text-primary) !important;
+}
+
+/* ===== FOOTER ===== */
+.footer-custom {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  border-top: 1px solid var(--border-primary);
+  margin-top: 2rem;
+  background: var(--bg-secondary);
+}
+
+.footer-custom p {
+  color: var(--text-secondary);
+  margin: 0.3rem 0 !important;
+}
+
+/* ===== ACCORDION ===== */
+.accordion-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+}
+
+/* ===== INPUTS E TEXTBOX ===== */
+input[type="text"],
+input[type="search"],
+textarea,
+.textbox {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-primary) !important;
+}
+
+input::placeholder {
+  color: var(--text-tertiary) !important;
+}
+
+/* ===== DROPDOWNS ===== */
+.dropdown {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-primary) !important;
+}
+
+/* ===== CHECKBOX GROUP - FILTRO DE PERFIS ===== */
+.profile-checkbox-group {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.5rem !important;
+}
+
+.profile-checkbox-group input[type="checkbox"] {
+  display: none !important;
+}
+
+/* Estilo dos botões de perfil */
+.profile-checkbox-group label {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.6rem !important;
+  padding: 0.7rem 1.2rem !important;
+  background: var(--bg-primary) !important;
+  border: 2px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  font-weight: 500 !important;
+  user-select: none !important;
+  margin: 0 !important;
+}
+
+.profile-checkbox-group label:hover {
+  border-color: var(--primary) !important;
+  background: var(--primary-light) !important;
+  transform: translateY(-2px);
+}
+
+/* Botão ativo (selecionado) */
+.profile-checkbox-group input[type="checkbox"]:checked + label {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+  color: white !important;
+  border-color: var(--primary-dark) !important;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
+}
+
+/* Checkbox customizado */
+.profile-checkbox-group input[type="checkbox"]:checked + label::before {
+  content: "✓" !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 18px !important;
+  height: 18px !important;
+  background: rgba(255, 255, 255, 0.3) !important;
+  border-radius: 4px !important;
+  font-size: 0.9rem !important;
+  margin-right: 0.3rem !important;
+}
+
+.profile-checkbox-group label::before {
+  content: "" !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 18px !important;
+  height: 18px !important;
+  background: var(--bg-secondary) !important;
+  border: 2px solid var(--border-primary) !important;
+  border-radius: 4px !important;
+  margin-right: 0.3rem !important;
+}
+
+/* ===== SLIDERS ===== */
+.slider {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ===== BADGES E LABELS ===== */
+.badge, label {
+  color: var(--text-primary) !important;
+}
+
+/* ===== LINHAS E BORDAS ===== */
+hr, .divider {
+  border-color: var(--border-primary) !important;
+}
+
+/* ===== TEXTOS E MARKDOWN ===== */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-primary) !important;
+}
+
+p, span, li, a {
+  color: var(--text-primary) !important;
+}
+
+strong {
+  color: var(--text-primary);
+}
+
+/* ===== ELEMENTOS ESPECIAIS ===== */
+.message-bubble {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.chat-message {
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.gr-chatbot-container {
+  background: var(--bg-primary) !important;
+}
+
+/* ===== DIVS E SECTIONS ===== */
+section, div, article {
+  background-color: inherit !important;
+}
+
+/* ===== RESPONSIVIDADE ===== */
+@media (max-width: 768px) {
+  .header-container h1 {
+    font-size: 1.8rem !important;
+  }
+  
+  .header-container p {
+    font-size: 0.9rem !important;
+  }
+  
+  .stat-number {
+    font-size: 2rem;
+  }
+}
