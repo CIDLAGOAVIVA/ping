@@ -485,6 +485,54 @@ class InstagramRAGApp:
                     </a>
                 </div>
                 """
+            elif metadata.get('profile') == 'web_search':
+                # Formatação para resultados de web_search
+                title = metadata.get('title', 'Sem título')
+                body = metadata.get('body', '')
+                source = metadata.get('source', '#')
+                
+                if len(body) > 400:
+                    body = body[:400] + "..."
+                
+                html += f"""
+                <div style='
+                    border: 1px solid #4caf50; 
+                    border-radius: 12px; 
+                    padding: 1.2rem; 
+                    margin: 0.8rem 0; 
+                    background: linear-gradient(135deg, #f1f8f4 0%, #ffffff 100%);
+                    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.15);
+                ' onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(76, 175, 80, 0.25)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(76, 175, 80, 0.15)'">
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                        <span style='
+                            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+                            color: white;
+                            padding: 0.3rem 0.8rem;
+                            border-radius: 20px;
+                            font-weight: 600;
+                            font-size: 0.9rem;
+                        '>🌐 Web</span>
+                        <span style='color: #888; font-size: 0.85rem;'>{date_str if date_str != "Data não disponível" else "Data não disponível"}</span>
+                    </div>
+                    <h4 style='margin: 0.5rem 0; color: #4caf50; font-size: 1.1rem;'>{title}</h4>
+                    <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{body}</p>
+                    <a href='{source}' target='_blank' style='
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+                        color: white;
+                        text-decoration: none;
+                        padding: 0.6rem 1.2rem;
+                        border-radius: 8px;
+                        font-size: 0.9rem;
+                        font-weight: 600;
+                    ' onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        🔗 Visitar página
+                    </a>
+                </div>
+                """
             else:
                 # Formatação para posts do Instagram
                 caption = metadata.get('caption', 'Sem legenda')
@@ -525,16 +573,16 @@ class InstagramRAGApp:
                         border-radius: 8px;
                     '>
                         <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
-                            ❤️ <strong style='color: #e91e63;'>{metadata['likesCount']:,}</strong> curtidas
+                            ❤️ <strong style='color: #e91e63;'>{metadata.get('likesCount', 0):,}</strong> curtidas
                         </span>
                         <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
-                            💬 <strong style='color: #2196f3;'>{metadata['commentsCount']:,}</strong> comentários
+                            💬 <strong style='color: #2196f3;'>{metadata.get('commentsCount', 0):,}</strong> comentários
                         </span>
                         <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
                             📊 <strong style='color: #667eea;'>{engagement:,}</strong> engajamento
                         </span>
                     </div>
-                    <a href='{metadata['url']}' target='_blank' style='
+                    <a href='{metadata.get('url', '#')}' target='_blank' style='
                         display: inline-flex;
                         align-items: center;
                         gap: 0.5rem;

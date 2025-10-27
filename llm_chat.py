@@ -1,5 +1,10 @@
 """
-Wrapper para chamar LLMs - suporta DeepSeek e Ollama
+Wrapper para chamar LLMs - suporta DeepSeek (principal) e Ollama (fallback)
+
+DeepSeek Chat: LLM principal (melhor reasoning)
+Ollama: Apenas como fallback se DeepSeek indisponível
+
+Nota: Ollama ainda é necessário para embeddings (mxbai-embed-large em embedding_manager.py)
 """
 
 from typing import Optional, List, Dict, Any, Union, Generator

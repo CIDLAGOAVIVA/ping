@@ -2,7 +2,8 @@
 Sistema RAG (Retrieval-Augmented Generation) para análise de posts do Instagram.
 """
 
-import ollama
+import llm_chat
+from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL, OLLAMA_GENERATION_MODEL
 from typing import List, Dict, Any, Tuple
 from datetime import datetime, timedelta
 from dateutil import parser as date_parser
@@ -186,10 +187,15 @@ IMPORTANTE: NÃO invente informações. Use apenas o que está no contexto forne
 - Seja conciso mas completo
 """
 
-        # Gera resposta
+        # Gera resposta com suporte a provider (DeepSeek ou Ollama)
         try:
-            response = ollama.chat(
-                model=self.generation_model,
+            if DEFAULT_PROVIDER == 'deepseek':
+                model_to_use = DEEPSEEK_MODEL
+            else:
+                model_to_use = self.generation_model
+                
+            response = llm_chat.chat(
+                model=model_to_use,
                 messages=[
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': user_prompt}
@@ -203,7 +209,7 @@ IMPORTANTE: NÃO invente informações. Use apenas o que está no contexto forne
                 return response['message']['content']
         
         except Exception as e:
-            return f"❌ Erro ao gerar resposta: {e}\n\nVerifique se o modelo {self.generation_model} está instalado com: ollama pull {self.generation_model}"
+            return f"❌ Erro ao gerar resposta: {e}"
     
     def query(
         self, 
@@ -420,10 +426,15 @@ IMPORTANTE:
 
 Responda de forma clara e objetiva usando os dados acima."""
 
-        # Gera resposta
+        # Gera resposta com suporte a provider (DeepSeek ou Ollama)
         try:
-            response = ollama.chat(
-                model=self.generation_model,
+            if DEFAULT_PROVIDER == 'deepseek':
+                model_to_use = DEEPSEEK_MODEL
+            else:
+                model_to_use = self.generation_model
+                
+            response = llm_chat.chat(
+                model=model_to_use,
                 messages=[
                     {'role': 'system', 'content': system_prompt},
                     {'role': 'user', 'content': user_prompt}

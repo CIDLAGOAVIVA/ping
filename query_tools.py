@@ -7,7 +7,14 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 import json
-import ollama
+import llm_chat
+from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL, OLLAMA_GENERATION_MODEL
+
+try:
+    from ddgs import DDGS
+    DDGS_AVAILABLE = True
+except ImportError:
+    DDGS_AVAILABLE = False
 
 
 class QueryTools:
@@ -579,9 +586,14 @@ Forneça uma análise estruturada em formato JSON com:
 
 Retorne APENAS o JSON, sem texto adicional."""
 
-            # Chama o LLM
-            response = ollama.chat(
-                model=self.llm_model,
+            # Chama o LLM com suporte a provider (DeepSeek ou Ollama)
+            if DEFAULT_PROVIDER == 'deepseek':
+                model_to_use = DEEPSEEK_MODEL
+            else:
+                model_to_use = self.llm_model
+                
+            response = llm_chat.chat(
+                model=model_to_use,
                 messages=[{
                     'role': 'user',
                     'content': prompt
@@ -841,6 +853,154 @@ Retorne APENAS o JSON, sem texto adicional."""
                 'newest': max(dates).isoformat() if dates else None
             }
         }
+    
+    def web_search(
+        self, 
+        query: str, 
+        limit: int = 5,
+        timeout: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca na internet usando DuckDuckGo para contexto externo.
+        
+        Útil quando o agente precisa de informações atuais ou contexto
+        que não está nos registros locais da UFF.
+        
+        Args:
+            query: Termo de busca
+            limit: Número de resultados (padrão: 5)
+            timeout: Timeout em segundos
+            
+        Returns:
+            Lista com resultados da busca contendo:
+            - title: Título do resultado
+            - body: Texto resumido do resultado
+            - source: URL da fonte
+            - date: Data (se disponível)
+            - profile: 'web_search' (para compatibilidade com outras ferramentas)
+        """
+        
+        if not DDGS_AVAILABLE:
+            return [{
+                'title': 'Web search indisponível',
+                'body': 'Módulo duckduckgo-search não está instalado',
+                'source': 'local',
+                'date': None,
+                'profile': 'web_search'
+            }]
+        
+        try:
+            results = []
+            filtered_count = 0
+            
+            # Busca com DuckDuckGo
+            try:
+                with DDGS(timeout=timeout) as ddgs:
+                    search_results = ddgs.text(
+                        query,  # Novo ddgs: query como posicional
+                        max_results=limit * 2,  # Busca mais para compensar filtros
+                        region='br-pt'  # Região Brasil
+                    )
+                    
+                    for result in search_results:
+                        if len(results) >= limit:
+                            break
+                            
+                        # Filtra resultados muito genéricos/inúteis
+                        title = result.get('title', '').lower()
+                        body = result.get('body', '').lower()
+                        href = result.get('href', '')
+                        
+                        # Rejeita apenas os muito óbviamente inúteis
+                        reject_patterns = [
+                            'wikipedia.org',  # Wikipedia (muito genérico)
+                            'dicionario', 'significado', 'sinônimo',  # Dicionários
+                            'pinterest', 'instagram.com', 'facebook.com',  # Redes sociais
+                        ]
+                        
+                        # Verifica se deve rejeitar
+                        should_reject = False
+                        for pattern in reject_patterns:
+                            if pattern in href.lower() or pattern in title:
+                                should_reject = True
+                                filtered_count += 1
+                                break
+                        
+                        if should_reject:
+                            continue
+                        
+                        # Também rejeita se o body é muito curto
+                        if len(body.strip()) < 50:
+                            filtered_count += 1
+                            continue
+                        
+                        results.append({
+                            'title': result.get('title', 'Sem título'),
+                            'body': result.get('body', ''),
+                            'source': result.get('href', ''),
+                            'date': result.get('date', None),
+                            'profile': 'web_search'  # Compatibilidade com outras ferramentas
+                        })
+            
+            except Exception as search_error:
+                print(f"⚠️ Erro na busca DuckDuckGo: {search_error}")
+                # Retorna mensagem de erro sem quebrar
+                return [{
+                    'title': 'Erro ao buscar na internet',
+                    'body': f'Não foi possível conectar ao DuckDuckGo. Tente novamente mais tarde.',
+                    'source': 'web',
+                    'date': None,
+                    'profile': 'web_search'
+                }]
+            
+            # Se conseguiu resultados após filtros, retorna
+            if results:
+                print(f"✅ Web search: {len(results)} resultado(s) encontrado(s) (filtrados: {filtered_count})")
+                return results
+            else:
+                # Se nenhum resultado passou pelo filtro, retorna sem filtro rigoroso
+                print(f"⚠️ Web search: Todos os {filtered_count} resultado(s) foram filtrados, tentando novamente sem filtro...")
+                
+                try:
+                    with DDGS(timeout=timeout) as ddgs:
+                        search_results = ddgs.text(
+                            query,  # Novo ddgs: query como posicional
+                            max_results=3,
+                            region='br-pt'
+                        )
+                        
+                        # Retorna sem filtro rigoroso
+                        for result in search_results:
+                            results.append({
+                                'title': result.get('title', 'Sem título'),
+                                'body': result.get('body', ''),
+                                'source': result.get('href', ''),
+                                'date': result.get('date', None),
+                                'profile': 'web_search'
+                            })
+                        
+                        if results:
+                            return results
+                except:
+                    pass
+                
+                # Se ainda assim não retornar nada, retorna mensagem
+                return [{
+                    'title': 'Nenhum resultado encontrado',
+                    'body': f'Infelizmente, a busca por "{query}" não retornou resultados na internet. Tente com termos diferentes.',
+                    'source': 'web',
+                    'date': None,
+                    'profile': 'web_search'
+                }]
+        
+        except Exception as e:
+            return [{
+                'title': 'Erro ao buscar na web',
+                'body': f'Erro: {str(e)}. Tente novamente mais tarde.',
+                'source': 'error',
+                'date': None,
+                'profile': 'web_search'
+            }]
 
 
 # Definições de ferramentas para function calling
@@ -1089,6 +1249,28 @@ TOOL_DEFINITIONS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Busca na internet usando DuckDuckGo. Use quando precisar de contexto atualizado ou informações não disponíveis no banco de dados local. Ideal para notícias recentes, eventos atuais, ou contexto externo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Termo de busca (ex: 'UFF notícias 2025', 'educação Brasil')"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Número de resultados a retornar (padrão: 5, máx: 10)",
+                        "default": 5
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -1118,6 +1300,14 @@ def main():
         print(f"  Posts: {stats['total_posts']}")
         print(f"  Média de curtidas: {stats['avg_likes']}")
         print(f"  Engajamento total: {stats['total_engagement']}")
+    
+    # Web search
+    print("\n🌐 Teste de busca na web:")
+    web_results = tools.web_search("UFF Universidade Federal Fluminense notícias", limit=3)
+    for i, result in enumerate(web_results, 1):
+        print(f"{i}. {result['title']}")
+        print(f"   {result['body'][:100]}...")
+        print(f"   Fonte: {result['source']}\n")
 
 
 if __name__ == "__main__":

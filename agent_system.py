@@ -13,7 +13,8 @@ Usuario → LLM Planejador → Ferramentas → LLM Sintetizador → Resposta
 
 import json
 from typing import Dict, Any, List, Tuple, Optional
-import ollama
+import llm_chat
+from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL, OLLAMA_GENERATION_MODEL
 
 from query_tools import QueryTools
 from embedding_manager import EmbeddingManager
@@ -161,6 +162,15 @@ class RAGAgent:
    - Parâmetros: nenhum
    - Exemplo: {"tool": "get_news_statistics"}
 
+15. **web_search**
+   - Uso: Buscar na INTERNET usando DuckDuckGo para contexto externo e atualizado
+   - Quando usar: "notícias sobre X 2025", "últimas informações sobre Y", "contexto atualizado de Z", "o que está acontecendo com W"
+   - IMPORTANTE: Use quando a base local NÃO é suficiente (perguntas sobre atualidades, eventos recentes, contexto nacional/internacional)
+   - Parâmetros: query (str - termo de busca), limit (int, default 5)
+   - Exemplo: {"tool": "web_search", "query": "educação Brasil 2025 notícias", "limit": 5}
+   - Retorna: Resultados com título, resumo, fonte e data (quando disponível)
+   - DICA: Combine com semantic_search quando a pergunta tem DUAS partes (contexto externo + conteúdo local)
+
 ## PERFIS DISPONÍVEIS (Instagram):
 - @dceuff (Diretório Central dos Estudantes)
 - @reitor (Reitor ATUAL da UFF - Antônio Cláudio Nóbrega 2023-2025)
@@ -194,6 +204,13 @@ class RAGAgent:
 ✅ Exemplos: "o que Roberto Salles achava de X", "posição do ex-reitor sobre Y", "Roberto Salles falou sobre Z"
 ✅ GATILHOS CRÍTICOS: "ex-reitor", "Roberto", "Salles", "Sales" → buscar em notícias (2009-2018)
 
+### Use WEB_SEARCH quando:
+✅ CONTEXTO EXTERNO/ATUALIZADO: "como está X em 2025", "últimas notícias sobre Y", "o que está acontecendo com Z"
+✅ NOTÍCIAS RECENTES: "notícias de hoje", "eventos recentes", "informação atualizada"
+✅ CONTEXTO NACIONAL/INTERNACIONAL: "economia do Brasil", "educação em SP", "lei federal de X"
+✅ BASE LOCAL INSUFICIENTE: Pergunta sobre tópicos não cobertos nos dados da UFF
+✅ COMBINE com semantic_search: Quando pergunta tem DUAS partes (contexto externo + conteúdo local)
+
 ### Use FERRAMENTAS ESTRUTURADAS quando:
 ✅ RANKING MAIORES: "mais curtidos", "top 10", "maior engajamento"
 ✅ RANKING MENORES: "menos curtidos", "posts com menos comentários", "menor engajamento" (use get_bottom_*)
@@ -205,10 +222,11 @@ class RAGAgent:
 
 ### COMBINE FERRAMENTAS quando:
 ✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
+✅ Pergunta tem CONTEXTO EXTERNO + LOCAL: use web_search + semantic_search
 ✅ Precisa de CONTEXTO + RANKING: busca semântica + ordenação
 
 ## INSTRUÇÕES:
-- Analise se a pergunta é sobre CONTEÚDO (use semantic_search) ou MÉTRICAS (use tools estruturadas)
+- Analise se a pergunta é sobre CONTEÚDO (use semantic_search), MÉTRICAS (use tools estruturadas) ou CONTEXTO EXTERNO (use web_search)
 - Você pode usar MÚLTIPLAS ferramentas em sequência
 - Ao usar semantic_search, REFORMULE a query para termos mais específicos
 - Retorne APENAS um JSON válido, sem texto adicional
@@ -375,16 +393,44 @@ Pergunta: "O que o DCE publicou sobre greve na última semana?"
     ]
 }}
 
+Pergunta: "Qual é a situação da educação no Brasil?"
+{{
+    "reasoning": "Pergunta vaga sobre tema amplo que requer contexto externo/nacional. Reformular para query específica de busca e usar web_search",
+    "actions": [
+        {{"tool": "web_search", "params": {{"query": "educação Brasil 2025 situação atualizado", "limit": 5}}}}
+    ]
+}}
+
+Pergunta: "Quais são as notícias mais recentes sobre educação no Brasil?"
+{{
+    "reasoning": "Pergunta sobre contexto EXTERNO (notícias atuais do Brasil). Base local não é suficiente, usar web_search para contexto atualizado",
+    "actions": [
+        {{"tool": "web_search", "params": {{"query": "educação Brasil notícias 2025", "limit": 5}}}}
+    ]
+}}
+
+Pergunta: "Como está a inflação? E o DCE falou sobre isso?"
+{{
+    "reasoning": "Pergunta com DUAS partes: 1) contexto externo (inflação) 2) conteúdo local. Combinar web_search + semantic_search",
+    "actions": [
+        {{"tool": "web_search", "params": {{"query": "inflação Brasil 2025 notícias economia", "limit": 3}}}},
+        {{"tool": "semantic_search", "params": {{"query": "inflação economia custo de vida preços", "n_results": 10, "profile": "dceuff"}}}}
+    ]
+}}
+
 IMPORTANTE: 
 - Para CONTEÚDO/TEMA → semantic_search (sempre reformule query)
 - Para MÉTRICAS/RANKING → ferramentas estruturadas
+- Para CONTEXTO EXTERNO/ATUALIZADO → web_search (notícias recentes, eventos atuais)
+- DICAS para web_search: transforme perguntas como "qual é a situação de X?" em "X Brasil 2025" ou "X notícias recentes"
 - Retorne APENAS o JSON, nada mais!
 """
 
         try:
-            # Chama o LLM para planejar
-            response = ollama.chat(
-                model=self.planning_model,
+            # Chama o LLM para planejar (usa DeepSeek ou Ollama conforme config)
+            model_to_use = DEEPSEEK_MODEL if DEFAULT_PROVIDER == 'deepseek' else self.planning_model
+            response = llm_chat.chat(
+                model=model_to_use,
                 messages=[
                     {
                         'role': 'system',
@@ -394,8 +440,7 @@ IMPORTANTE:
                         'role': 'user',
                         'content': planning_prompt
                     }
-                ],
-                format='json'  # Força saída em JSON
+                ]
             )
             
             # Parse da resposta
@@ -555,6 +600,32 @@ IMPORTANTE:
                         'metadata': raw_results['metadatas'][0][i],
                         'document': raw_results['documents'][0][i],
                         'distance': raw_results['distances'][0][i] if 'distances' in raw_results else None
+                    })
+                
+                return formatted_results
+            
+            elif tool == 'web_search':
+                query = params.get('query', '')
+                limit = params.get('limit', 5)
+                
+                # Executa busca na web
+                web_results = self.query_tools.web_search(
+                    query=query,
+                    limit=limit
+                )
+                
+                # Converte para formato padrão com 'profile' para compatibilidade
+                formatted_results = []
+                for i, result in enumerate(web_results):
+                    formatted_results.append({
+                        'id': f'web_{i}',
+                        'metadata': {
+                            'source': result.get('source', ''),
+                            'date': result.get('date', ''),
+                            'type': 'web_search',
+                            'profile': result.get('profile', 'web_search')  # IMPORTANTE para evitar KeyError
+                        },
+                        'document': f"**{result.get('title', '')}**\n\n{result.get('body', '')}"
                     })
                 
                 return formatted_results
@@ -930,12 +1001,15 @@ NÃO invente informações que não estão no contexto!
 """
 
         try:
-            response = ollama.chat(
-                model=self.generation_model,
-                messages=[
-                    {
-                        'role': 'system',
-                        'content': '''Você é um assistente especializado em análise de posts do Instagram da UFF.
+            # Usa DeepSeek se configurado, senão Ollama
+            if DEFAULT_PROVIDER == 'deepseek':
+                model_to_use = DEEPSEEK_MODEL
+                response = llm_chat.chat(
+                    model=model_to_use,
+                    messages=[
+                        {
+                            'role': 'system',
+                            'content': '''Você é um assistente especializado em análise de posts do Instagram da UFF.
 
 INFORMAÇÕES CRÍTICAS - DATAS EXATAS:
 - Reitor ATUAL (2023-2025): Antônio Cláudio Nóbrega
@@ -950,14 +1024,14 @@ REGRA IMPORTANTE: Se mencionar Roberto Salles, SEMPRE:
 4. Use dados apenas de arquivo histórico
 
 Responda de forma clara, objetiva e bem formatada usando APENAS os dados fornecidos.'''
-                    },
-                    {
-                        'role': 'user',
-                        'content': synthesis_prompt
-                    }
-                ],
-                stream=stream
-            )
+                        },
+                        {
+                            'role': 'user',
+                            'content': synthesis_prompt
+                        }
+                    ],
+                    stream=stream
+                )
             
             if stream:
                 return response
