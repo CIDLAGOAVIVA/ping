@@ -7,11 +7,13 @@ import gradio as gr
 from agent_system import RAGAgent
 from rag_system import RAGSystem
 from ping_theme import ping_theme
+from data_injestion import DataInjestionPipeline, ContentType
 from datetime import datetime
 from typing import List, Tuple, Dict
 import json
 import os
 from pathlib import Path
+import traceback
 
 
 class HistoryManager:
@@ -124,6 +126,9 @@ class InstagramRAGApp:
         self.use_agent = use_agent
         self.history_manager = HistoryManager()
         
+        # Inicializa pipeline de ingestão
+        print("📥 Inicializando pipeline de ingestão de dados...")
+        
         if use_agent:
             # Inicializa sistema de agente inteligente
             print("🤖 Modo: Agente Inteligente (LLM decide quais ferramentas usar)")
@@ -156,13 +161,23 @@ class InstagramRAGApp:
             self.stats = {
                 'indexed_posts': em_stats.get('total_documents', 0),
                 'profiles': em_stats.get('profiles', []),
+                'sources': em_stats.get('sources', []),
+                'content_types': em_stats.get('content_types', []),
                 'embedding_model': em_stats.get('embedding_model', 'unknown'),
                 'collection_name': em_stats.get('collection_name', 'unknown')
             }
             posts_count = self.stats['indexed_posts']
             print(f"📊 Perfis detectados: {self.stats['profiles']}")
+            print(f"📂 Tipos de conteúdo: {self.stats['content_types']}")
         
         print(f"\n✓ Sistema pronto com {posts_count} posts indexados")
+        
+        # Pipeline de ingestão
+        self.injestion_pipeline = DataInjestionPipeline(
+            embedding_manager=self.embedding_manager,
+            data_dir="data/injected"
+        )
+        print("✓ Pipeline de ingestão pronto")
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -273,7 +288,7 @@ class InstagramRAGApp:
                                     border-radius: 20px;
                                     font-weight: 600;
                                     font-size: 0.9rem;
-                                '>@{metadata['profile']}</span>
+                                '>@{metadata.get('profile', 'Desconhecido')}</span>
                             </div>
                             <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
                         </div>
@@ -435,8 +450,63 @@ class InstagramRAGApp:
             
             # Detecta tipo de conteúdo
             content_type = metadata.get('content_type', 'instagram_post')
+            source = metadata.get('source', 'instagram')
             
-            if content_type == 'news':
+            # Documentos injetados via upload
+            if source == 'upload' or content_type in ['document', 'article', 'report', 'research', 'manual', 'policy']:
+                filename = metadata.get('filename', 'Documento')
+                doc_id = metadata.get('doc_id', 'N/A')
+                author = metadata.get('author', 'Desconhecido')
+                description = metadata.get('description', '')
+                tags = metadata.get('tags', '')
+                chunk_index = metadata.get('chunk_index', 0)
+                total_chunks = metadata.get('total_chunks', 1)
+                
+                # Texto do documento
+                doc_text = post.get('document', '')
+                if len(doc_text) > 500:
+                    doc_text = doc_text[:500] + "..."
+                
+                html += f"""
+                <div style='
+                    border: 1px solid #2196f3; 
+                    border-radius: 12px; 
+                    padding: 1.2rem; 
+                    margin: 0.8rem 0; 
+                    background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);
+                    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.15);
+                ' onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(33, 150, 243, 0.25)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(33, 150, 243, 0.15)'">
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                        <span style='
+                            background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+                            color: white;
+                            padding: 0.3rem 0.8rem;
+                            border-radius: 20px;
+                            font-weight: 600;
+                            font-size: 0.9rem;
+                        '>📄 Documento</span>
+                        <span style='color: #888; font-size: 0.85rem;'>🔢 Chunk {chunk_index + 1}/{total_chunks}</span>
+                    </div>
+                    <h4 style='margin: 0.5rem 0; color: #2196f3; font-size: 1.1rem;'>{filename}</h4>
+                    <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'><strong>✍️ {author}</strong></p>
+                    {f"<p style='margin: 0.5rem 0; color: #666; font-size: 0.85rem; font-style: italic;'>{description}</p>" if description else ""}
+                    {f"<p style='margin: 0.5rem 0;'><span style='background: #e3f2fd; color: #1976d2; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem;'>{tags}</span></p>" if tags else ""}
+                    <div style='
+                        margin: 0.8rem 0; 
+                        padding: 1rem; 
+                        background: rgba(33, 150, 243, 0.05); 
+                        border-left: 3px solid #2196f3; 
+                        border-radius: 4px;
+                    '>
+                        <p style='margin: 0; line-height: 1.6; color: #333; font-family: monospace; font-size: 0.9rem;'>{doc_text}</p>
+                    </div>
+                    <div style='color: #888; font-size: 0.8rem; margin-top: 0.5rem;'>
+                        🆔 ID: {doc_id[:12]}... | 📅 {date_str}
+                    </div>
+                </div>
+                """
+            elif content_type == 'news':
                 # Formatação para notícias
                 title = metadata.get('title', 'Sem título')
                 description = metadata.get('description', '')
@@ -559,7 +629,7 @@ class InstagramRAGApp:
                                 border-radius: 20px;
                                 font-weight: 600;
                                 font-size: 0.9rem;
-                            '>@{metadata['profile']}</span>
+                            '>@{metadata.get('profile', 'Desconhecido')}</span>
                         </div>
                         <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
                     </div>
@@ -607,7 +677,7 @@ class InstagramRAGApp:
         message: str, 
         history: List[Tuple[str, str]],
         n_results: int,
-        profile_filter: str
+        profile_filter: List[str]
     ) -> Tuple[str, str]:
         """
         Processa mensagem do chat e retorna resposta.
@@ -616,7 +686,7 @@ class InstagramRAGApp:
             message: Mensagem do usuário
             history: Histórico do chat
             n_results: Número de posts a recuperar (ignorado no modo agente)
-            profile_filter: Filtro de perfil (string com um ou múltiplos perfis separados por vírgula)
+            profile_filter: Lista de fontes selecionadas (perfis Instagram com @ ou documentos com 📄)
             
         Returns:
             Tupla (resposta, fontes_html)
@@ -624,18 +694,17 @@ class InstagramRAGApp:
         if not message.strip():
             return "Por favor, faça uma pergunta.", ""
         
-        # Processa filtro de perfil
-        # Se múltiplos perfis selecionados (ex: "dceuff, reitor"), 
-        # não filtra por perfil (busca em todos)
-        # Se um único perfil, passa para filtro
+        # Processa filtro de fontes
+        # Extrai perfis Instagram (remover @) e tipos de documentos (remover 📄)
+        profiles_selected = [f.replace("@", "").strip() for f in profile_filter if f.startswith("@")]
+        content_types_selected = [f.replace("📄", "").strip() for f in profile_filter if f.startswith("📄")]
+        
+        # Para a compatibilidade com query tools, passa um perfil único ou None
         profile = None
-        if profile_filter and profile_filter != "Todos":
-            if "," in profile_filter:
-                # Múltiplos perfis: não filtra (busca em todos os selecionados)
-                profile = None
-            else:
-                # Um único perfil: filtra
-                profile = profile_filter.strip()
+        if profiles_selected and len(profiles_selected) == 1:
+            # Um único perfil Instagram selecionado
+            profile = profiles_selected[0]
+        # Se múltiplos perfis ou mistura de perfis+documentos, não filtra por perfil (busca em todos)
         
         # Executa query
         if self.use_agent:
@@ -654,10 +723,12 @@ class InstagramRAGApp:
         
         # Salva no histórico
         posts_count = len(posts) if posts else 0
+        # Formata filter_label para histórico (ex: "@dceuff, 📄 Artigo")
+        filter_label = ", ".join(profile_filter) if profile_filter else "Todas as fontes"
         self.history_manager.add(
             question=message,
             response=response,
-            profile_filter=profile_filter,
+            profile_filter=filter_label,
             posts_count=posts_count
         )
         
@@ -890,6 +961,104 @@ class InstagramRAGApp:
         """
         return html
     
+    def get_injected_documents_html(self) -> str:
+        """
+        Retorna HTML com lista de documentos injetados.
+        
+        Returns:
+            HTML formatado com documentos
+        """
+        docs = self.injestion_pipeline.get_injected_documents()
+        stats = self.injestion_pipeline.get_stats()
+        
+        if not docs:
+            return """
+            <div style='padding: 2rem; text-align: center; color: var(--text-secondary);'>
+                <p style='font-size: 1.1rem;'>📭 Nenhum documento injetado ainda</p>
+                <p style='color: var(--text-secondary);'>Use o painel de ingestão para adicionar documentos</p>
+            </div>
+            """
+        
+        html = f"""
+        <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
+            <h2 style='margin: 0 0 1.5rem 0; color: var(--text-primary);'>📂 Documentos Injetados</h2>
+            
+            <!-- Estatísticas de Ingestão -->
+            <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;'>
+                <div style='background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 1rem; text-align: center;'>
+                    <p style='margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem;'>📚 Total</p>
+                    <h3 style='margin: 0; color: var(--primary); font-size: 1.8rem;'>{stats['total_documents']}</h3>
+                </div>
+                <div style='background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 1rem; text-align: center;'>
+                    <p style='margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem;'>📄 Páginas</p>
+                    <h3 style='margin: 0; color: var(--primary); font-size: 1.8rem;'>{stats['total_pages']}</h3>
+                </div>
+                <div style='background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 8px; padding: 1rem; text-align: center;'>
+                    <p style='margin: 0 0 0.5rem 0; color: var(--text-secondary); font-size: 0.85rem;'>💾 Tamanho</p>
+                    <h3 style='margin: 0; color: var(--primary); font-size: 1.8rem;'>{stats['total_size_mb']:.2f} MB</h3>
+                </div>
+            </div>
+            
+            <!-- Lista de Documentos -->
+            <div style='display: grid; gap: 1rem;'>
+        """
+        
+        for doc in docs:
+            doc_id = doc['id'][:8]
+            upload_date = datetime.fromisoformat(doc['upload_date']).strftime('%d/%m/%Y %H:%M')
+            content_type = doc['content_type'].upper()
+            size_kb = doc['file_size_bytes'] / 1024
+            
+            tags_html = ""
+            if doc.get('custom_tags'):
+                tags_html = "".join([
+                    f"<span style='background: var(--primary); color: white; padding: 0.25rem 0.6rem; border-radius: 12px; font-size: 0.75rem; margin-right: 0.3rem;'>{tag}</span>"
+                    for tag in doc['custom_tags'][:3]
+                ])
+            
+            html += f"""
+            <div style='
+                background: var(--bg-secondary);
+                border: 1px solid var(--border-primary);
+                border-radius: 8px;
+                padding: 1.2rem;
+                box-shadow: var(--shadow-sm);
+                transition: all 0.3s ease;
+            ' onmouseover="this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.boxShadow='var(--shadow-sm)'">
+                <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.8rem;'>
+                    <div>
+                        <span style='background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; display: inline-block;'>
+                            {content_type}
+                        </span>
+                    </div>
+                    <span style='color: var(--text-secondary); font-size: 0.8rem;'>ID: {doc_id}</span>
+                </div>
+                
+                <h4 style='margin: 0.5rem 0; color: var(--text-primary);'>
+                    📄 {doc['filename']}
+                </h4>
+                
+                <p style='margin: 0.5rem 0; color: var(--text-secondary); font-size: 0.9rem;'>
+                    {doc.get('description', 'Sem descrição')}
+                </p>
+                
+                <div style='display: flex; gap: 1rem; margin: 0.8rem 0; font-size: 0.85rem; color: var(--text-secondary);'>
+                    <span>📅 {upload_date}</span>
+                    <span>💾 {size_kb:.1f} KB</span>
+                    <span>📄 {doc.get('page_count', 1)} página(s)</span>
+                    {f"<span>✍️ {doc.get('author', 'N/A')}</span>" if doc.get('author') else ""}
+                </div>
+                
+                {f"<div style='margin: 0.8rem 0;'>{tags_html}</div>" if tags_html else ""}
+            </div>
+            """
+        
+        html += """
+            </div>
+        </div>
+        """
+        return html
+    
     def create_interface(self) -> gr.Blocks:
         """
         Cria interface Gradio profissional com abas navegáveis.
@@ -955,11 +1124,16 @@ class InstagramRAGApp:
                         with gr.Column(scale=3, elem_classes="sidebar-config"):
                             gr.Markdown("### ⚙️ Configurações")
                             
-                            # Botões de perfil como checkboxes
+                            # Construir lista de fontes (perfis Instagram + tipos de documentos)
+                            instagram_profiles = ["@" + p for p in self.stats.get('profiles', [])]
+                            document_types = ["📄 " + t for t in self.stats.get('content_types', [])]
+                            all_sources = instagram_profiles + document_types
+                            
+                            # Botões de perfil como checkboxes (agora chamado "Lista de Fontes")
                             profile_filter = gr.CheckboxGroup(
-                                choices=["@" + p for p in self.stats['profiles']],
-                                value=["@" + p for p in self.stats['profiles']],  # Todos selecionados por padrão
-                                label="📊 Filtro de Perfis (selecione um ou mais)",
+                                choices=all_sources if all_sources else ["(nenhuma fonte disponível)"],
+                                value=all_sources,  # Todos selecionados por padrão
+                                label="📊 Lista de Fontes (selecione uma ou mais)",
                                 interactive=True,
                                 elem_classes="profile-checkbox-group"
                             )
@@ -1041,7 +1215,283 @@ class InstagramRAGApp:
                                 outputs=history_html
                             )
                 
-                # ===== ABA 4: DOCUMENTAÇÃO =====
+                # ===== ABA 4: INGESTÃO DE DADOS =====
+                with gr.TabItem("📥 Ingestão de Dados"):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            gr.Markdown("### 📤 Upload de Documentos")
+                            
+                            # Upload de arquivo
+                            upload_file = gr.File(
+                                label="Selecione um documento",
+                                file_types=[".pdf", ".docx", ".pptx", ".txt", ".md", ".html"],
+                                file_count="single"
+                            )
+                            
+                            # Tipo de conteúdo
+                            content_type = gr.Radio(
+                                choices=[
+                                    "Documento", 
+                                    "Artigo", 
+                                    "Relatório", 
+                                    "Pesquisa", 
+                                    "Manual", 
+                                    "Política",
+                                    "Outro"
+                                ],
+                                value="Documento",
+                                label="Tipo de Conteúdo"
+                            )
+                            
+                            # Autor
+                            author = gr.Textbox(
+                                label="Autor/Criador (opcional)",
+                                placeholder="Ex: João Silva",
+                                lines=1
+                            )
+                            
+                            # Descrição
+                            description = gr.Textbox(
+                                label="Descrição (opcional)",
+                                placeholder="Descreva brevemente o conteúdo",
+                                lines=3
+                            )
+                            
+                            # Tags
+                            tags = gr.Textbox(
+                                label="Tags (separadas por vírgula)",
+                                placeholder="Ex: HUAP, Saúde, Medicina",
+                                lines=2
+                            )
+                            
+                            # URL (se aplicável)
+                            source_url = gr.Textbox(
+                                label="URL de origem (opcional)",
+                                placeholder="https://...",
+                                lines=1
+                            )
+                            
+                            # Botão de ingestão
+                            inject_btn = gr.Button(
+                                "🚀 Ingerir Documento",
+                                variant="primary",
+                                size="lg"
+                            )
+                        
+                        with gr.Column(scale=1):
+                            gr.Markdown("### 📝 Ou Cole Texto Diretamente")
+                            
+                            # Texto direto
+                            raw_text = gr.Textbox(
+                                label="Cole o texto aqui",
+                                placeholder="Texto bruto para ingestão...",
+                                lines=8
+                            )
+                            
+                            # Nome da fonte
+                            text_source_name = gr.Textbox(
+                                label="Nome da Fonte",
+                                placeholder="Ex: Notícia UFRJ",
+                                lines=1
+                            )
+                            
+                            # Tipo de conteúdo para texto
+                            text_content_type = gr.Radio(
+                                choices=["Artigo", "Notícia", "Conteúdo", "Outro"],
+                                value="Artigo",
+                                label="Tipo"
+                            )
+                            
+                            # Botão para texto
+                            inject_text_btn = gr.Button(
+                                "📝 Ingerir Texto",
+                                variant="primary",
+                                size="lg"
+                            )
+                    
+                    # Resultados
+                    with gr.Row():
+                        injection_status = gr.HTML(
+                            value="<p style='color: var(--text-secondary); text-align: center;'>Aguardando upload...</p>"
+                        )
+                    
+                    gr.Markdown("---")
+                    
+                    # Documentos injetados
+                    with gr.Row():
+                        injected_docs_html = gr.HTML(
+                            value=self.get_injected_documents_html()
+                        )
+                    
+                    # Funções de ingestão
+                    def handle_file_injection(file, ctype, author_name, desc, tag_list, url):
+                        """Processa ingestão de arquivo."""
+                        if file is None:
+                            return "<p style='color: red;'>❌ Nenhum arquivo selecionado</p>", self.get_injected_documents_html()
+                        
+                        try:
+                            # Mapeia tipo de conteúdo
+                            ct_map = {
+                                "Documento": ContentType.DOCUMENT,
+                                "Artigo": ContentType.ARTICLE,
+                                "Relatório": ContentType.REPORT,
+                                "Pesquisa": ContentType.RESEARCH,
+                                "Manual": ContentType.MANUAL,
+                                "Política": ContentType.POLICY,
+                                "Outro": ContentType.OTHER
+                            }
+                            
+                            content_type_enum = ct_map.get(ctype, ContentType.OTHER)
+                            
+                            # Processa tags
+                            tags_list = [t.strip() for t in tag_list.split(",") if t.strip()] if tag_list else []
+                            
+                            # Ingere documento
+                            success, message, result = self.injestion_pipeline.ingest_document(
+                                file_path=file.name,
+                                content_type=content_type_enum,
+                                custom_tags=tags_list,
+                                author=author_name.strip() if author_name else None,
+                                description=desc.strip() if desc else None,
+                                source_url=url.strip() if url else None
+                            )
+                            
+                            if success:
+                                status_html = f"""
+                                <div style='
+                                    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+                                    color: white;
+                                    padding: 1.5rem;
+                                    border-radius: 8px;
+                                    margin: 1rem 0;
+                                '>
+                                    <h4 style='margin: 0 0 0.5rem 0;'>✅ {message}</h4>
+                                    <p style='margin: 0.5rem 0; font-size: 0.9rem;'>
+                                        📚 <strong>{result['filename']}</strong><br>
+                                        📄 {result['pages']} página(s) • 🔗 {result['chunks_created']} chunks
+                                    </p>
+                                </div>
+                                """
+                            else:
+                                status_html = f"""
+                                <div style='
+                                    background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+                                    color: white;
+                                    padding: 1.5rem;
+                                    border-radius: 8px;
+                                    margin: 1rem 0;
+                                '>
+                                    <h4 style='margin: 0 0 0.5rem 0;'>❌ Erro na Ingestão</h4>
+                                    <p style='margin: 0; font-size: 0.9rem;'>{message}</p>
+                                </div>
+                                """
+                            
+                            # Atualiza lista de documentos
+                            updated_docs_html = self.get_injected_documents_html()
+                            
+                            return status_html, updated_docs_html
+                        
+                        except Exception as e:
+                            error_html = f"""
+                            <div style='
+                                background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+                                color: white;
+                                padding: 1.5rem;
+                                border-radius: 8px;
+                                margin: 1rem 0;
+                            '>
+                                <h4 style='margin: 0 0 0.5rem 0;'>❌ Erro ao Processar</h4>
+                                <p style='margin: 0; font-size: 0.9rem;'>{str(e)}</p>
+                            </div>
+                            """
+                            return error_html, self.get_injected_documents_html()
+                    
+                    def handle_text_injection(text, source_name, text_ctype):
+                        """Processa ingestão de texto."""
+                        if not text.strip():
+                            return "<p style='color: red;'>❌ Texto vazio</p>", self.get_injected_documents_html()
+                        
+                        if not source_name.strip():
+                            return "<p style='color: red;'>❌ Nome da fonte obrigatório</p>", self.get_injected_documents_html()
+                        
+                        try:
+                            ct_map = {
+                                "Artigo": ContentType.ARTICLE,
+                                "Notícia": ContentType.ARTICLE,
+                                "Conteúdo": ContentType.DOCUMENT,
+                                "Outro": ContentType.OTHER
+                            }
+                            
+                            content_type_enum = ct_map.get(text_ctype, ContentType.OTHER)
+                            
+                            success, message, result = self.injestion_pipeline.ingest_raw_text(
+                                text=text,
+                                source_name=source_name.strip(),
+                                content_type=content_type_enum
+                            )
+                            
+                            if success:
+                                status_html = f"""
+                                <div style='
+                                    background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+                                    color: white;
+                                    padding: 1.5rem;
+                                    border-radius: 8px;
+                                    margin: 1rem 0;
+                                '>
+                                    <h4 style='margin: 0 0 0.5rem 0;'>✅ {message}</h4>
+                                    <p style='margin: 0.5rem 0; font-size: 0.9rem;'>
+                                        📝 <strong>{result['filename']}</strong><br>
+                                        🔗 {result['chunks_created']} chunk criado
+                                    </p>
+                                </div>
+                                """
+                            else:
+                                status_html = f"""
+                                <div style='
+                                    background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+                                    color: white;
+                                    padding: 1.5rem;
+                                    border-radius: 8px;
+                                    margin: 1rem 0;
+                                '>
+                                    <h4 style='margin: 0 0 0.5rem 0;'>❌ Erro</h4>
+                                    <p style='margin: 0; font-size: 0.9rem;'>{message}</p>
+                                </div>
+                                """
+                            
+                            updated_docs_html = self.get_injected_documents_html()
+                            return status_html, updated_docs_html
+                        
+                        except Exception as e:
+                            error_html = f"""
+                            <div style='
+                                background: linear-gradient(135deg, #f44336 0%, #e53935 100%);
+                                color: white;
+                                padding: 1.5rem;
+                                border-radius: 8px;
+                                margin: 1rem 0;
+                            '>
+                                <h4 style='margin: 0 0 0.5rem 0;'>❌ Erro ao Processar</h4>
+                                <p style='margin: 0; font-size: 0.9rem;'>{str(e)}</p>
+                            </div>
+                            """
+                            return error_html, self.get_injected_documents_html()
+                    
+                    # Event handlers
+                    inject_btn.click(
+                        handle_file_injection,
+                        inputs=[upload_file, content_type, author, description, tags, source_url],
+                        outputs=[injection_status, injected_docs_html]
+                    )
+                    
+                    inject_text_btn.click(
+                        handle_text_injection,
+                        inputs=[raw_text, text_source_name, text_content_type],
+                        outputs=[injection_status, injected_docs_html]
+                    )
+                
+                # ===== ABA 5: DOCUMENTAÇÃO =====
                 with gr.TabItem("📖 Documentação"):
                     gr.HTML(f"""
                     <div style='padding: 2rem;'>
@@ -1069,12 +1519,25 @@ class InstagramRAGApp:
                         </div>
                         
                         <div style='background: #fff8f0; border-left: 4px solid #ff9800; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
-                            <h3 style='margin-top: 0; color: #ff9800;'>🔧 Configurações</h3>
+                            <h3 style='margin-top: 0; color: #ff9800;'>🔧 Configurações e Ingestão</h3>
                             <p>
                                 <strong>Filtro de Perfis:</strong> Selecione um ou mais perfis clicando nos botões. Todos os selecionados serão incluídos na busca<br>
                                 <strong>Nº Posts:</strong> Ajuste quantos posts recuperar (se em modo clássico)<br>
-                                <strong>Abas:</strong> Navigate entre Chat, Estatísticas, Histórico e esta Documentação
+                                <strong>Aba Ingestão:</strong> Upload de documentos com conversão automática via Docling e vetorização<br>
+                                <strong>Abas:</strong> Navigate entre Chat, Estatísticas, Histórico, Ingestão e esta Documentação
                             </p>
+                        </div>
+                        
+                        <div style='background: #f0f9ff; border-left: 4px solid #2196f3; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                            <h3 style='margin-top: 0; color: #2196f3;'>📥 Pipeline de Ingestão</h3>
+                            <ul>
+                                <li><strong>Formatos Suportados:</strong> PDF, DOCX, PPTX, TXT, MD, HTML</li>
+                                <li><strong>Conversão:</strong> Docling extrai texto, tabelas e figuras estruturando tudo em JSON</li>
+                                <li><strong>Chunks Automáticos:</strong> Documentos grandes são divididos por página</li>
+                                <li><strong>Vetorização:</strong> Cada chunk é vetorizado e indexado no ChromaDB</li>
+                                <li><strong>Busca Semântica:</strong> Documentos injetados participam das buscas normais do chat</li>
+                                <li><strong>Metadados:</strong> Tags, autor e descrição para melhor organização</li>
+                            </ul>
                         </div>
                         
                         <div style='background: #f0f0f0; border-radius: 8px; padding: 1.5rem; margin-top: 2rem;'>
@@ -1085,7 +1548,9 @@ class InstagramRAGApp:
                                 <li><strong>Modelo de Embedding:</strong> {self.stats['embedding_model']}</li>
                                 <li><strong>Modelo de Geração:</strong> Local via Ollama</li>
                                 <li><strong>Banco de Dados:</strong> ChromaDB (Vetorial)</li>
+                                <li><strong>Ingestão:</strong> Docling (conversão de documentos)</li>
                                 <li><strong>Interface:</strong> Gradio 4.x</li>
+                                <li><strong>Fontes Suportadas:</strong> Instagram, Notícias, Web Search, Documentos Injetados</li>
                             </ul>
                         </div>
                     </div>
@@ -1151,8 +1616,9 @@ class InstagramRAGApp:
             <div class="footer-custom">
                 <p style="margin: 0; font-weight: 500;">
                     🎓 Universidade Federal Fluminense • 
-                    {self.stats['indexed_posts']:,} posts • 
-                    {len(self.stats['profiles'])} perfis
+                    {self.stats['indexed_posts']:,} documentos • 
+                    {len(self.stats.get('profiles', []))} perfis • 
+                    {len(self.stats.get('content_types', []))} tipos de conteúdo
                 </p>
                 <p style="margin: 0.5rem 0 0 0; font-size: 0.75rem;">
                     ⚡ Powered by Ollama • ChromaDB • Gradio

@@ -143,6 +143,56 @@ class EmbeddingManager:
         
         print(f"✓ Indexação concluída! Total de documentos: {self.collection.count()}")
     
+    def add_documents(
+        self,
+        documents: List[str],
+        ids: List[str],
+        metadatas: List[Dict[str, Any]],
+        batch_size: int = 100
+    ):
+        """
+        Adiciona documentos genéricos ao banco vetorial.
+        Método usado pelo pipeline de ingestão de dados.
+        
+        Args:
+            documents: Lista de textos dos documentos
+            ids: Lista de IDs únicos para cada documento
+            metadatas: Lista de metadados para cada documento
+            batch_size: Tamanho do lote para processamento
+        """
+        if not documents or not ids or not metadatas:
+            raise ValueError("documents, ids e metadatas não podem estar vazios")
+        
+        if len(documents) != len(ids) or len(documents) != len(metadatas):
+            raise ValueError("documents, ids e metadatas devem ter o mesmo tamanho")
+        
+        total = len(documents)
+        print(f"\n📥 Indexando {total} documento(s)...")
+        
+        for i in range(0, total, batch_size):
+            batch_docs = documents[i:i + batch_size]
+            batch_ids = ids[i:i + batch_size]
+            batch_metas = metadatas[i:i + batch_size]
+            
+            # Gera embeddings
+            embeddings = []
+            for doc in batch_docs:
+                embedding = self.generate_embedding(doc)
+                embeddings.append(embedding)
+            
+            # Adiciona ao ChromaDB
+            self.collection.add(
+                documents=batch_docs,
+                metadatas=batch_metas,
+                ids=batch_ids,
+                embeddings=embeddings
+            )
+            
+            progress = min(i + batch_size, total)
+            print(f"Progresso: {progress}/{total} documentos indexados ({(progress/total)*100:.1f}%)")
+        
+        print(f"✅ Indexação concluída! Total na coleção: {self.collection.count()}")
+    
     def search(
         self, 
         query: str, 
@@ -202,7 +252,7 @@ class EmbeddingManager:
         """
         count = self.collection.count()
         
-        # Pega TODOS os documentos para garantir que obtém todos os perfis
+        # Pega TODOS os documentos para garantir que obtém todos os perfis/fontes
         if count > 0:
             # Busca todos os documentos (só metadados, não documentos completos)
             all_data = self.collection.get(
@@ -211,15 +261,32 @@ class EmbeddingManager:
             )
             
             profiles = set()
-            for metadata in all_data['metadatas']:
-                profiles.add(metadata['profile'])
+            sources = set()
+            content_types = set()
             
-            # Ordena os perfis alfabeticamente
+            for metadata in all_data['metadatas']:
+                # Posts do Instagram têm 'profile'
+                if 'profile' in metadata:
+                    profiles.add(metadata['profile'])
+                
+                # Documentos injetados e outros têm 'source'
+                if 'source' in metadata:
+                    sources.add(metadata['source'])
+                
+                # Todos têm 'content_type'
+                if 'content_type' in metadata:
+                    content_types.add(metadata['content_type'])
+            
+            # Ordena alfabeticamente
             profiles_list = sorted(list(profiles))
+            sources_list = sorted(list(sources))
+            content_types_list = sorted(list(content_types))
             
             return {
                 'total_documents': count,
-                'profiles': profiles_list,
+                'profiles': profiles_list,  # Perfis do Instagram
+                'sources': sources_list,     # Fontes (upload, web_search, etc)
+                'content_types': content_types_list,  # Tipos de conteúdo
                 'collection_name': self.collection_name,
                 'embedding_model': self.embedding_model
             }
@@ -227,6 +294,8 @@ class EmbeddingManager:
         return {
             'total_documents': 0,
             'profiles': [],
+            'sources': [],
+            'content_types': [],
             'collection_name': self.collection_name,
             'embedding_model': self.embedding_model
         }

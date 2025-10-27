@@ -31,6 +31,38 @@ class QueryTools:
         self.collection = embedding_manager.collection
         self.llm_model = llm_model
     
+    def _filter_instagram_posts(self, results: Dict, profile: Optional[str] = None) -> List[Dict]:
+        """
+        Filtra apenas posts do Instagram a partir dos resultados do ChromaDB.
+        Posts do Instagram têm campos 'likesCount' e 'commentsCount'.
+        
+        Args:
+            results: Resultado do collection.get()
+            profile: Filtrar por perfil específico (opcional)
+            
+        Returns:
+            Lista de posts do Instagram com metadados
+        """
+        posts = []
+        for i in range(len(results['ids'])):
+            metadata = results['metadatas'][i]
+            
+            # Filtra apenas posts do Instagram (têm likesCount)
+            if 'likesCount' not in metadata:
+                continue
+            
+            # Filtro de perfil se especificado
+            if profile and metadata.get('profile') != profile:
+                continue
+            
+            posts.append({
+                'id': results['ids'][i],
+                'metadata': metadata,
+                'document': results['documents'][i]
+            })
+        
+        return posts
+    
     def get_top_posts_by_likes(
         self, 
         limit: int = 10, 
@@ -38,7 +70,7 @@ class QueryTools:
         min_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Retorna os posts com mais curtidas.
+        Retorna os posts com mais curtidas (apenas posts do Instagram).
         
         Args:
             limit: Número de posts a retornar
@@ -48,26 +80,31 @@ class QueryTools:
         Returns:
             Lista de posts ordenados por curtidas (decrescente)
         """
-        # Busca todos os posts (ou filtrados)
-        where = {}
-        if profile:
-            where['profile'] = profile
+        # Busca apenas posts do Instagram (que têm source=None ou content_type=instagram_post)
+        where_conditions = []
         
         # ChromaDB não suporta ordenação nativa, então pegamos todos e ordenamos
         results = self.collection.get(
-            where=where if where else None,
             limit=10000  # Pega muitos para ordenar
         )
         
-        # Converte para lista de dicts
+        # Converte para lista de dicts - apenas posts Instagram com likesCount
         posts = []
         for i in range(len(results['ids'])):
             metadata = results['metadatas'][i]
             
+            # Filtra apenas posts do Instagram (tem likesCount)
+            if 'likesCount' not in metadata:
+                continue
+            
+            # Filtro de perfil se especificado
+            if profile and metadata.get('profile') != profile:
+                continue
+            
             # Aplica filtro de data se especificado
             if min_date:
                 try:
-                    post_date = date_parser.parse(metadata['timestamp'])
+                    post_date = date_parser.parse(metadata.get('timestamp', ''))
                     min_date_obj = date_parser.parse(min_date)
                     if post_date < min_date_obj:
                         continue
@@ -81,7 +118,7 @@ class QueryTools:
             })
         
         # Ordena por curtidas (decrescente)
-        posts.sort(key=lambda x: x['metadata']['likesCount'], reverse=True)
+        posts.sort(key=lambda x: x['metadata'].get('likesCount', 0), reverse=True)
         
         return posts[:limit]
     
@@ -91,7 +128,7 @@ class QueryTools:
         profile: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Retorna os posts com mais comentários.
+        Retorna os posts com mais comentários (apenas posts do Instagram).
         
         Args:
             limit: Número de posts a retornar
@@ -100,24 +137,27 @@ class QueryTools:
         Returns:
             Lista de posts ordenados por comentários (decrescente)
         """
-        where = {}
-        if profile:
-            where['profile'] = profile
-        
-        results = self.collection.get(
-            where=where if where else None,
-            limit=10000
-        )
+        results = self.collection.get(limit=10000)
         
         posts = []
         for i in range(len(results['ids'])):
+            metadata = results['metadatas'][i]
+            
+            # Filtra apenas posts do Instagram (tem commentsCount)
+            if 'commentsCount' not in metadata:
+                continue
+            
+            # Filtro de perfil se especificado
+            if profile and metadata.get('profile') != profile:
+                continue
+            
             posts.append({
                 'id': results['ids'][i],
-                'metadata': results['metadatas'][i],
+                'metadata': metadata,
                 'document': results['documents'][i]
             })
         
-        posts.sort(key=lambda x: x['metadata']['commentsCount'], reverse=True)
+        posts.sort(key=lambda x: x['metadata'].get('commentsCount', 0), reverse=True)
         return posts[:limit]
     
     def get_posts_by_engagement(
@@ -126,7 +166,7 @@ class QueryTools:
         profile: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Retorna os posts com maior engajamento (curtidas + comentários).
+        Retorna os posts com maior engajamento (curtidas + comentários, apenas Instagram).
         
         Args:
             limit: Número de posts a retornar
@@ -135,24 +175,26 @@ class QueryTools:
         Returns:
             Lista de posts ordenados por engajamento total
         """
-        where = {}
-        if profile:
-            where['profile'] = profile
-        
-        results = self.collection.get(
-            where=where if where else None,
-            limit=10000
-        )
+        results = self.collection.get(limit=10000)
         
         posts = []
         for i in range(len(results['ids'])):
             metadata = results['metadatas'][i]
-            engagement = metadata['likesCount'] + metadata['commentsCount']
+            
+            # Filtra apenas posts do Instagram (tem ambos os campos)
+            if 'likesCount' not in metadata or 'commentsCount' not in metadata:
+                continue
+            
+            # Filtro de perfil se especificado
+            if profile and metadata.get('profile') != profile:
+                continue
+            
+            engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
             posts.append({
                 'id': results['ids'][i],
                 'metadata': metadata,
-                'document': results['documents'][i],
-                'engagement': engagement
+                'engagement': engagement,
+                'document': results['documents'][i]
             })
         
         posts.sort(key=lambda x: x['engagement'], reverse=True)
@@ -164,7 +206,7 @@ class QueryTools:
         profile: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Retorna os posts com MENOS curtidas.
+        Retorna os posts com MENOS curtidas (apenas Instagram).
         
         Args:
             limit: Número de posts a retornar
@@ -173,25 +215,11 @@ class QueryTools:
         Returns:
             Lista de posts ordenados por curtidas (crescente)
         """
-        where = {}
-        if profile:
-            where['profile'] = profile
-        
-        results = self.collection.get(
-            where=where if where else None,
-            limit=10000
-        )
-        
-        posts = []
-        for i in range(len(results['ids'])):
-            posts.append({
-                'id': results['ids'][i],
-                'metadata': results['metadatas'][i],
-                'document': results['documents'][i]
-            })
+        results = self.collection.get(limit=10000)
+        posts = self._filter_instagram_posts(results, profile)
         
         # Ordena por curtidas (CRESCENTE - menos curtidas primeiro)
-        posts.sort(key=lambda x: x['metadata']['likesCount'], reverse=False)
+        posts.sort(key=lambda x: x['metadata'].get('likesCount', 0), reverse=False)
         return posts[:limit]
     
     def get_bottom_posts_by_comments(
@@ -200,7 +228,7 @@ class QueryTools:
         profile: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Retorna os posts com MENOS comentários.
+        Retorna os posts com MENOS comentários (apenas Instagram).
         
         Args:
             limit: Número de posts a retornar
@@ -209,25 +237,11 @@ class QueryTools:
         Returns:
             Lista de posts ordenados por comentários (crescente)
         """
-        where = {}
-        if profile:
-            where['profile'] = profile
-        
-        results = self.collection.get(
-            where=where if where else None,
-            limit=10000
-        )
-        
-        posts = []
-        for i in range(len(results['ids'])):
-            posts.append({
-                'id': results['ids'][i],
-                'metadata': results['metadatas'][i],
-                'document': results['documents'][i]
-            })
+        results = self.collection.get(limit=10000)
+        posts = self._filter_instagram_posts(results, profile)
         
         # Ordena por comentários (CRESCENTE - menos comentários primeiro)
-        posts.sort(key=lambda x: x['metadata']['commentsCount'], reverse=False)
+        posts.sort(key=lambda x: x['metadata'].get('commentsCount', 0), reverse=False)
         return posts[:limit]
     
     def get_recent_posts(
@@ -346,12 +360,15 @@ class QueryTools:
             limit=10000
         )
         
-        if not results['ids']:
+        # Filtra apenas posts do Instagram
+        posts = self._filter_instagram_posts(results, profile)
+        
+        if not posts:
             return {'error': 'Nenhum post encontrado'}
         
-        total_posts = len(results['ids'])
-        total_likes = sum(m['likesCount'] for m in results['metadatas'])
-        total_comments = sum(m['commentsCount'] for m in results['metadatas'])
+        total_posts = len(posts)
+        total_likes = sum(p['metadata'].get('likesCount', 0) for p in posts)
+        total_comments = sum(p['metadata'].get('commentsCount', 0) for p in posts)
         
         # Calcula médias
         avg_likes = total_likes / total_posts if total_posts > 0 else 0
@@ -359,14 +376,14 @@ class QueryTools:
         
         # Encontra post com mais engajamento
         posts_with_engagement = []
-        for i in range(len(results['ids'])):
-            metadata = results['metadatas'][i]
-            engagement = metadata['likesCount'] + metadata['commentsCount']
+        for p in posts:
+            metadata = p['metadata']
+            engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
             posts_with_engagement.append({
-                'url': metadata['url'],
+                'url': metadata.get('url', ''),
                 'engagement': engagement,
-                'likes': metadata['likesCount'],
-                'comments': metadata['commentsCount']
+                'likes': metadata.get('likesCount', 0),
+                'comments': metadata.get('commentsCount', 0)
             })
         
         posts_with_engagement.sort(key=lambda x: x['engagement'], reverse=True)
@@ -385,17 +402,18 @@ class QueryTools:
     
     def compare_profiles(self) -> Dict[str, Any]:
         """
-        Compara estatísticas entre todos os perfis disponíveis.
+        Compara estatísticas entre todos os perfis do Instagram.
         
         Returns:
             Dicionário com comparação entre perfis
         """
         results = self.collection.get(limit=10000)
+        posts = self._filter_instagram_posts(results)  # Filtra apenas Instagram
         
         profiles = {}
-        for i in range(len(results['ids'])):
-            metadata = results['metadatas'][i]
-            profile = metadata['profile']
+        for p in posts:
+            metadata = p['metadata']
+            profile = metadata.get('profile', 'desconhecido')
             
             if profile not in profiles:
                 profiles[profile] = {
@@ -405,8 +423,8 @@ class QueryTools:
                 }
             
             profiles[profile]['posts'] += 1
-            profiles[profile]['likes'] += metadata['likesCount']
-            profiles[profile]['comments'] += metadata['commentsCount']
+            profiles[profile]['likes'] += metadata.get('likesCount', 0)
+            profiles[profile]['comments'] += metadata.get('commentsCount', 0)
         
         # Calcula médias
         comparison = {}
@@ -415,8 +433,8 @@ class QueryTools:
                 'total_posts': stats['posts'],
                 'total_likes': stats['likes'],
                 'total_comments': stats['comments'],
-                'avg_likes': round(stats['likes'] / stats['posts'], 2),
-                'avg_comments': round(stats['comments'] / stats['posts'], 2),
+                'avg_likes': round(stats['likes'] / stats['posts'], 2) if stats['posts'] > 0 else 0,
+                'avg_comments': round(stats['comments'] / stats['posts'], 2) if stats['posts'] > 0 else 0,
                 'total_engagement': stats['likes'] + stats['comments']
             }
         

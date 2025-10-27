@@ -71,37 +71,68 @@ class RAGSystem:
     
     def format_post_for_context(self, post_data: Dict[str, Any]) -> str:
         """
-        Formata um post para incluir no contexto da resposta.
+        Formata um post/documento para incluir no contexto da resposta.
+        Suporta tanto posts do Instagram quanto documentos injetados.
         
         Args:
-            post_data: Dados do post
+            post_data: Dados do post/documento
             
         Returns:
-            String formatada do post
+            String formatada do post/documento
         """
         metadata = post_data
         
-        # Parse da data
-        try:
-            timestamp = date_parser.parse(metadata['timestamp'])
-            date_str = timestamp.strftime('%d/%m/%Y')
-        except:
-            date_str = "Data não disponível"
+        # Detecta tipo de fonte
+        is_instagram = 'likesCount' in metadata
+        is_document = metadata.get('source') == 'upload'
         
-        # Formata caption
-        caption = metadata.get('caption', '')
-        if len(caption) > 200:
-            caption = caption[:200] + "..."
-        
-        post_info = f"""
-[Post do perfil @{metadata['profile']}]
-Data: {date_str}
-Legenda: {caption}
-Engajamento: {metadata['likesCount']} curtidas, {metadata['commentsCount']} comentários
-Link: {metadata['url']}
+        if is_document:
+            # Formata documento injetado
+            filename = metadata.get('filename', 'Documento')
+            doc_id = metadata.get('doc_id', 'ID desconhecido')
+            content_type = metadata.get('content_type', 'Desconhecido')
+            author = metadata.get('author', 'Desconhecido')
+            chunk_index = metadata.get('chunk_index', '?')
+            total_chunks = metadata.get('total_chunks', '?')
+            
+            doc_info = f"""
+[📄 {content_type}]
+Arquivo: {filename}
+Autor: {author}
+Chunk: {chunk_index}/{total_chunks}
+ID: {doc_id}
 ---
 """
-        return post_info
+            return doc_info
+        else:
+            # Formata post do Instagram
+            profile = metadata.get('profile', 'Perfil desconhecido')
+            
+            # Parse da data
+            try:
+                timestamp = date_parser.parse(metadata['timestamp'])
+                date_str = timestamp.strftime('%d/%m/%Y')
+            except:
+                date_str = "Data não disponível"
+            
+            # Formata caption
+            caption = metadata.get('caption', '')
+            if len(caption) > 200:
+                caption = caption[:200] + "..."
+            
+            likes = metadata.get('likesCount', 0)
+            comments = metadata.get('commentsCount', 0)
+            url = metadata.get('url', '#')
+            
+            post_info = f"""
+[Post do perfil @{profile}]
+Data: {date_str}
+Legenda: {caption}
+Engajamento: {likes} curtidas, {comments} comentários
+Link: {url}
+---
+"""
+            return post_info
     
     def retrieve_relevant_posts(
         self, 
@@ -146,45 +177,78 @@ Link: {metadata['url']}
         stream: bool = False
     ) -> str:
         """
-        Gera resposta usando o modelo de linguagem com contexto dos posts.
+        Gera resposta usando o modelo de linguagem com contexto dos posts/documentos.
         
         Args:
             query: Pergunta do usuário
-            context_posts: Posts relevantes recuperados
+            context_posts: Posts/documentos relevantes recuperados
             stream: Se True, retorna generator para streaming
             
         Returns:
             Resposta gerada ou generator
         """
-        # Monta contexto
-        context = "## Posts Relevantes do Instagram:\n\n"
-        for i, post in enumerate(context_posts, 1):
-            context += self.format_post_for_context(post['metadata'])
+        # Detecta tipos de fonte nos resultados
+        has_documents = any(p['metadata'].get('source') == 'upload' for p in context_posts)
+        has_instagram = any('likesCount' in p['metadata'] for p in context_posts)
         
-        # Prompt do sistema
-        system_prompt = """Você é um assistente especializado em analisar posts do Instagram de perfis institucionais da UFF (Universidade Federal Fluminense).
+        # Monta contexto com título dinâmico
+        if has_documents and has_instagram:
+            context = "## Contexto Relevante (Posts do Instagram + Documentos):\n\n"
+        elif has_documents:
+            context = "## Contexto Relevante (Documentos Injetados):\n\n"
+        else:
+            context = "## Posts Relevantes do Instagram:\n\n"
+        
+        for i, post in enumerate(context_posts, 1):
+            context += f"({i}) " + self.format_post_for_context(post['metadata'])
+            context += f"Conteúdo: {post['text'][:500]}\n\n"
+        
+        # Prompt do sistema - adaptado para múltiplas fontes
+        system_prompt = """Você é um assistente especializado em analisar informações da UFF (Universidade Federal Fluminense).
 
-Seu trabalho é:
-1. Responder perguntas sobre os posts com base APENAS nas informações fornecidas
-2. Sempre citar os posts relevantes com links quando disponíveis
-3. Ser preciso e objetivo
-4. Usar português brasileiro
-5. Se não houver informação suficiente, admitir isso claramente
-6. Priorizar dados factuais (datas, números, engajamento)
+TAREFA CRÍTICA:
+1. Responda APENAS com informações do contexto fornecido
+2. Se há documentos (📄) no contexto, EXTRAIA deles a resposta com prioridade absoluta
+3. Os documentos contêm informações oficiais - use-os como fonte primária
+4. Posts do Instagram são secundários - use apenas se documentos não tiverem a resposta
+5. Cite SEMPRE a fonte: nome do arquivo, tipo de conteúdo, e se possível o número do parágrafo/artigo
 
-IMPORTANTE: NÃO invente informações. Use apenas o que está no contexto fornecido."""
+RESTRIÇÕES OBRIGATÓRIAS:
+- NÃO invente nada. Use apenas o que está no contexto
+- Se não encontrar a resposta exata, diga "NÃO ENCONTRADO" e cite o que está no contexto
+- Se a pergunta é sobre regulamento/estatuto, PRIORIZE documentos oficiais
+- Sempre identifique se a resposta vem de um documento ou post
 
-        # Prompt do usuário
+FORMATO DE RESPOSTA:
+- Comece com a informação encontrada
+- Cite a fonte no final: "Fonte: [Tipo de Documento] | [Nome do Arquivo]"
+- Se fragmentado em chunks, mencione: "Encontrado em múltiplos trechos do documento"
+"""
+
+        # Prompt do usuário - com instruções mais explícitas
         user_prompt = f"""{context}
 
 ## Pergunta do Usuário:
 {query}
 
-## Instruções:
-- Baseie sua resposta APENAS nos posts acima
-- Cite os posts relevantes com seus links
-- Se os posts não contiverem informação suficiente, diga isso
-- Seja conciso mas completo
+## INSTRUÇÕES CRÍTICAS PARA RESPOSTA:
+1. Se a pergunta é sobre "estatuto", "regulamento", "Art." (artigo), "§" (parágrafo), ou "eleição":
+   - PROCURE NOS DOCUMENTOS (marcados com 📄)
+   - Extraia exatamente o texto do documento
+   - Cite o Artigo/Parágrafo completo
+   
+2. Se encontrar o conteúdo em múltiplos chunks, MESCLE as informações
+
+3. NUNCA diga "não encontrei nos posts" se houver documentos (📄) no contexto:
+   - Os documentos contêm Estatuto/Regimento da UFF
+   - O texto pode estar em um dos chunks listados
+
+4. Formato de resposta:
+   - [RESPOSTA DIRETA]
+   - Fonte: [tipo] | [arquivo] | [localização no documento]
+
+5. Se a informação solicitada está incompleta ou truncada nos chunks, 
+   monte a resposta com os fragmentos disponíveis indicando que foi compilada de múltiplos trechos
 """
 
         # Gera resposta com suporte a provider (DeepSeek ou Ollama)
@@ -214,7 +278,7 @@ IMPORTANTE: NÃO invente informações. Use apenas o que está no contexto forne
     def query(
         self, 
         question: str, 
-        n_results: int = 5,
+        n_results: int = 10,
         profile_filter: str = None,
         stream: bool = False
     ) -> Tuple[str, List[Dict[str, Any]]]:
@@ -223,7 +287,7 @@ IMPORTANTE: NÃO invente informações. Use apenas o que está no contexto forne
         
         Args:
             question: Pergunta do usuário
-            n_results: Número de posts a recuperar
+            n_results: Número de posts/documentos a recuperar (padrão: 10)
             profile_filter: Filtrar por perfil
             stream: Se True, streaming de resposta
             
