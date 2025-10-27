@@ -249,13 +249,19 @@ class QueryTools:
             limit=10000
         )
         
-        cutoff_date = datetime.now() - timedelta(days=days)
+        # Cria cutoff_date com timezone UTC para comparação correta
+        from datetime import timezone
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         posts = []
         for i in range(len(results['ids'])):
             metadata = results['metadatas'][i]
             try:
                 post_date = date_parser.parse(metadata['timestamp'])
+                # Garante que post_date tem timezone para comparação
+                if post_date.tzinfo is None:
+                    post_date = post_date.replace(tzinfo=timezone.utc)
+                
                 if post_date >= cutoff_date:
                     posts.append({
                         'id': results['ids'][i],

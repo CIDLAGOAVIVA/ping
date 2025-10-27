@@ -24,6 +24,9 @@ class RAGAgent:
     Agente inteligente que usa LLM para decidir quais ferramentas usar.
     """
     
+    # Perfis válidos no sistema
+    PERFIS_VALIDOS = ['reitor', 'vicereitor', 'dceuff']
+    
     def __init__(
         self,
         embedding_model: str = "mxbai-embed-large",
@@ -46,6 +49,26 @@ class RAGAgent:
         print(f"✓ Agente RAG inicializado")
         print(f"  - Modelo de planejamento: {planning_model}")
         print(f"  - Modelo de geração: {generation_model}")
+    
+    def validar_perfil(self, profile: Optional[str]) -> tuple[bool, str]:
+        """
+        Valida se um perfil existe antes de buscar.
+        
+        Args:
+            profile: Nome do perfil a validar
+            
+        Returns:
+            Tupla (está_válido, mensagem)
+        """
+        if not profile:
+            return True, ""
+        
+        profile_clean = profile.replace('@', '').lower()
+        if profile_clean not in self.PERFIS_VALIDOS:
+            msg = f"Perfil @{profile_clean} não encontrado. Perfis disponíveis: {', '.join(['@' + p for p in self.PERFIS_VALIDOS])}"
+            return False, msg
+        
+        return True, profile_clean
     
     def _create_tools_description(self) -> str:
         """
@@ -203,6 +226,15 @@ class RAGAgent:
         Returns:
             Lista de ações (ferramentas) a executar
         """
+        # Validação de perfil
+        perfil_ok, perfil_msg = self.validar_perfil(profile_filter)
+        if not perfil_ok:
+            # Retorna ação especial para erro de perfil
+            return [{
+                "tool": "error",
+                "params": {"message": perfil_msg}
+            }]
+        
         tools_desc = self._create_tools_description()
         
         planning_prompt = f"""{tools_desc}
@@ -741,6 +773,11 @@ DIRETRIZES:
 5. Organize a informação de forma lógica
 6. Se múltiplas ferramentas foram usadas, integre os resultados de forma coerente
 7. Sempre inclua links dos posts quando disponível
+8. SE A PERGUNTA MENCIONAR "Roberto Salles" ou "Roberto Sales":
+   - SEMPRE esclareça que ele foi reitor da UFF de 2009 a 2018 (EX-REITOR)
+   - NÃO tem posts atuais no Instagram (apenas notícias históricas de 2009-2018)
+   - O reitor ATUAL é Antonio Claudio Nobrega (2023-presente)
+   - Deixe claro que informações sobre ele estão em arquivo histórico
 
 NÃO invente informações que não estão no contexto!
 """
@@ -751,7 +788,19 @@ NÃO invente informações que não estão no contexto!
                 messages=[
                     {
                         'role': 'system',
-                        'content': 'Você é um assistente especializado em análise de posts do Instagram da UFF. Responda de forma clara, objetiva e bem formatada.'
+                        'content': '''Você é um assistente especializado em análise de posts do Instagram da UFF.
+
+INFORMAÇÕES CRÍTICAS:
+- Reitor ATUAL da UFF (2023-presente): Antonio Claudio Nobrega (ou Antônio Cláudio Nóbrega)
+- Ex-reitor (2009-2018): Roberto Salles (ou Roberto Sales) - NÃO tem posts atuais
+
+REGRA IMPORTANTE: Se a pergunta mencionar Roberto Salles/Sales, SEMPRE:
+1. Esclareça que foi reitor de 2009-2018 (EX-reitor)
+2. Indique que não tem posts atuais no Instagram
+3. Mencione que o reitor atual é Antonio Claudio Nobrega
+4. Use dados apenas de arquivo histórico (2009-2018)
+
+Responda de forma clara, objetiva e bem formatada usando APENAS os dados fornecidos.'''
                     },
                     {
                         'role': 'user',
