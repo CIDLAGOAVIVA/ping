@@ -1068,14 +1068,14 @@ class InstagramRAGApp:
             Interface Gradio configurada
         """
         with gr.Blocks(
-            title="PING - UFF ANALYTICS",
+            title="VoxCampus - UFF",
             theme=ping_theme
         ) as app:
             
             # Header principal
             gr.HTML(f"""
             <div class="header-container">
-                <h1>🎓 PING - UFF ANALYTICS</h1>
+                <h1>🎓 VoxCampus - UFF</h1>
             </div>
             """)
             
