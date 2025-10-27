@@ -669,6 +669,174 @@ Retorne APENAS o JSON, sem texto adicional."""
             }
 
 
+    def get_news_articles(
+        self,
+        limit: int = 10,
+        min_date: Optional[str] = None,
+        max_date: Optional[str] = None,
+        publisher: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retorna notícias filtradas por data e/ou publisher.
+        
+        Args:
+            limit: Número de notícias a retornar
+            min_date: Data mínima no formato ISO (opcional)
+            max_date: Data máxima no formato ISO (opcional)
+            publisher: Nome do publisher para filtrar (opcional)
+            
+        Returns:
+            Lista de notícias ordenadas por data (mais recentes primeiro)
+        """
+        # Busca apenas notícias
+        where = {'content_type': 'news'}
+        
+        results = self.collection.get(
+            where=where,
+            limit=10000
+        )
+        
+        news_articles = []
+        for i in range(len(results['ids'])):
+            metadata = results['metadatas'][i]
+            
+            # Aplica filtros de data
+            try:
+                news_date = date_parser.parse(metadata['timestamp'])
+                
+                if min_date:
+                    min_date_obj = date_parser.parse(min_date)
+                    if news_date < min_date_obj:
+                        continue
+                
+                if max_date:
+                    max_date_obj = date_parser.parse(max_date)
+                    if news_date > max_date_obj:
+                        continue
+            except:
+                pass
+            
+            # Aplica filtro de publisher
+            if publisher and publisher.lower() not in metadata.get('publisher_name', '').lower():
+                continue
+            
+            news_articles.append({
+                'id': results['ids'][i],
+                'metadata': metadata,
+                'document': results['documents'][i]
+            })
+        
+        # Ordena por data (mais recentes primeiro)
+        news_articles.sort(
+            key=lambda x: date_parser.parse(x['metadata']['timestamp']),
+            reverse=True
+        )
+        
+        return news_articles[:limit]
+    
+    def search_news_by_person(
+        self,
+        person_name: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca notícias que mencionam uma pessoa específica (ex: Roberto Salles).
+        
+        Args:
+            person_name: Nome da pessoa a buscar
+            limit: Número de notícias a retornar
+            
+        Returns:
+            Lista de notícias que mencionam a pessoa
+        """
+        # Busca apenas notícias
+        where = {'content_type': 'news'}
+        
+        results = self.collection.get(
+            where=where,
+            limit=10000
+        )
+        
+        # Filtra notícias que mencionam a pessoa
+        relevant_news = []
+        person_name_lower = person_name.lower()
+        
+        # Variações comuns de nomes (ex: Salles vs Sales)
+        name_variations = [person_name_lower]
+        if 'salles' in person_name_lower:
+            name_variations.append(person_name_lower.replace('salles', 'sales'))
+        elif 'sales' in person_name_lower:
+            name_variations.append(person_name_lower.replace('sales', 'salles'))
+        
+        for i in range(len(results['ids'])):
+            document = results['documents'][i].lower()
+            metadata = results['metadatas'][i]
+            
+            # Verifica se QUALQUER variação do nome completo aparece no documento
+            # Procura o nome completo, não apenas partes separadas
+            if any(variation in document for variation in name_variations):
+                relevant_news.append({
+                    'id': results['ids'][i],
+                    'metadata': metadata,
+                    'document': results['documents'][i]
+                })
+        
+        # Ordena por data (mais antigas primeiro para contexto histórico)
+        relevant_news.sort(
+            key=lambda x: date_parser.parse(x['metadata']['timestamp']),
+            reverse=False  # Histórico: mais antigas primeiro
+        )
+        
+        return relevant_news[:limit]
+    
+    def get_news_statistics(self) -> Dict[str, Any]:
+        """
+        Retorna estatísticas sobre as notícias indexadas.
+        
+        Returns:
+            Dicionário com estatísticas
+        """
+        # Busca todas as notícias
+        where = {'content_type': 'news'}
+        
+        results = self.collection.get(
+            where=where,
+            limit=10000
+        )
+        
+        if not results['ids']:
+            return {
+                'total_news': 0,
+                'publishers': [],
+                'date_range': {'oldest': None, 'newest': None},
+                'error': 'Nenhuma notícia encontrada'
+            }
+        
+        # Coleta estatísticas
+        publishers = {}
+        dates = []
+        
+        for metadata in results['metadatas']:
+            # Contagem por publisher
+            pub = metadata.get('publisher_name', 'Desconhecido')
+            publishers[pub] = publishers.get(pub, 0) + 1
+            
+            # Coleta datas
+            try:
+                dates.append(date_parser.parse(metadata['timestamp']))
+            except:
+                pass
+        
+        return {
+            'total_news': len(results['ids']),
+            'publishers': [{'name': k, 'count': v} for k, v in sorted(publishers.items(), key=lambda x: x[1], reverse=True)],
+            'date_range': {
+                'oldest': min(dates).isoformat() if dates else None,
+                'newest': max(dates).isoformat() if dates else None
+            }
+        }
+
+
 # Definições de ferramentas para function calling
 TOOL_DEFINITIONS = [
     {
@@ -849,6 +1017,70 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["topic"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_news_articles",
+            "description": "Retorna notícias filtradas por data e/ou publisher. Use para buscar notícias de um período específico ou de um veículo específico.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Número de notícias a retornar (padrão: 10)",
+                        "default": 10
+                    },
+                    "min_date": {
+                        "type": "string",
+                        "description": "Data mínima no formato ISO (ex: 2009-01-01)"
+                    },
+                    "max_date": {
+                        "type": "string",
+                        "description": "Data máxima no formato ISO (ex: 2010-12-31)"
+                    },
+                    "publisher": {
+                        "type": "string",
+                        "description": "Nome do publisher/veículo (ex: FAPERJ, BBC, O Globo)"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_news_by_person",
+            "description": "Busca notícias que mencionam uma pessoa específica, como o ex-reitor Roberto Salles. Use quando o usuário perguntar sobre alguém em notícias.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "person_name": {
+                        "type": "string",
+                        "description": "Nome da pessoa a buscar (ex: Roberto Salles, Roberto Sales)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Número de notícias a retornar (padrão: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["person_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_news_statistics",
+            "description": "Retorna estatísticas sobre as notícias indexadas (total, publishers, período). Use quando o usuário pedir informações gerais sobre notícias.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
             }
         }
     }

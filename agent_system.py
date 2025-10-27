@@ -112,16 +112,43 @@ class RAGAgent:
    - Retorna: Contagem positivo/negativo/neutro, aspectos positivos/negativos, resumo qualitativo
 
 11. **semantic_search**
-   - Uso: Buscar posts por CONTEÚDO/TEMA usando busca semântica vetorial
+   - Uso: Buscar posts/notícias por CONTEÚDO/TEMA usando busca semântica vetorial
    - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
-   - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional)
-   - Exemplo: {"tool": "semantic_search", "query": "HUAP hospital atendimento saúde", "n_results": 8}
+   - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional), content_type_filter (str, opcional: 'news' ou 'instagram_post')
+   - Exemplo: {"tool": "semantic_search", "params": {"query": "HUAP hospital atendimento saúde", "n_results": 8}}
+   - Exemplo com filtro: {"tool": "semantic_search", "params": {"query": "cotas ações afirmativas", "n_results": 10, "content_type_filter": "news"}}
    - IMPORTANTE: Reformule a query do usuário para termos mais específicos e relevantes
+   - IMPORTANTE: Use content_type_filter='news' quando buscar sobre ex-reitor ou período histórico
+
+12. **get_news_articles**
+   - Uso: Buscar NOTÍCIAS filtradas por data e/ou publisher
+   - Quando usar: "notícias sobre", "reportagens", "imprensa", "mídia", "jornais"
+   - Parâmetros: limit (int), min_date (str ISO), max_date (str ISO), publisher (str, opcional)
+   - Exemplo: {"tool": "get_news_articles", "limit": 10, "min_date": "2009-01-01", "max_date": "2010-12-31"}
+
+13. **search_news_by_person**
+   - Uso: Buscar notícias que mencionam uma PESSOA específica (ex: Roberto Salles, ex-reitor)
+   - Quando usar: "notícias sobre Roberto Salles", "o que a imprensa disse sobre X"
+   - Parâmetros: person_name (str), limit (int)
+   - Exemplo: {"tool": "search_news_by_person", "person_name": "Roberto Salles", "limit": 10}
+
+14. **get_news_statistics**
+   - Uso: Estatísticas sobre notícias indexadas (total, publishers, período)
+   - Quando usar: "quantas notícias", "quais veículos", "período coberto"
+   - Parâmetros: nenhum
+   - Exemplo: {"tool": "get_news_statistics"}
 
 ## PERFIS DISPONÍVEIS:
 - dceuff (Diretório Central dos Estudantes)
-- reitor (Reitor da UFF)
-- vicereitor (Vice-Reitor da UFF)
+- reitor (Reitor ATUAL da UFF - posts do Instagram)
+- vicereitor (Vice-Reitor ATUAL da UFF - posts do Instagram)
+- noticias (Notícias sobre a UFF e Roberto Salles/Sales - ex-reitor)
+
+## CONTEXTO IMPORTANTE:
+- **Roberto Salles (ou Roberto Sales)** foi REITOR DA UFF entre 2009-2018
+- Notícias sobre "reitor da UFF" do período 2009-2018 referem-se a Roberto Salles
+- Posts atuais (2023-2025) do perfil @reitor referem-se ao REITOR ATUAL (não Roberto Salles)
+- Para perguntas sobre Roberto Salles: SEMPRE buscar em NOTÍCIAS, nunca em posts atuais
 
 ## DIRETRIZES CRÍTICAS:
 
@@ -131,6 +158,15 @@ class RAGAgent:
 ✅ Perguntas ABERTAS: "como X tratou Y", "qual posicionamento sobre Z"
 ✅ TEMPORAL + CONTEÚDO: "o que foi dito em 2024 sobre X"
 ✅ Contexto específico: "última aparição pública", "pronunciamento sobre"
+
+### Use FERRAMENTAS DE NOTÍCIAS quando:
+✅ Pergunta sobre IMPRENSA: "o que os jornais disseram", "reportagens sobre"
+✅ Menção a PESSOA ESPECÍFICA: "Roberto Salles", "Roberto Sales", "ex-reitor"
+✅ Veículos de mídia: "FAPERJ", "BBC", "O Globo", "G1"
+✅ Período histórico: notícias de 2009-2018
+✅ IMPORTANTE: Perguntas sobre POSICIONAMENTO/OPINIÃO do ex-reitor Roberto Salles SEMPRE usar search_news_by_person + semantic_search em notícias
+✅ Exemplos: "o que Roberto Salles achava de X", "posição do ex-reitor sobre Y", "Roberto Salles falou sobre Z"
+✅ GATILHOS CRÍTICOS: "ex-reitor", "Roberto", "Salles", "Sales" → buscar em notícias (2009-2018)
 
 ### Use FERRAMENTAS ESTRUTURADAS quando:
 ✅ RANKING MAIORES: "mais curtidos", "top 10", "maior engajamento"
@@ -174,6 +210,11 @@ class RAGAgent:
 ## CONTEXTO:
 Pergunta do usuário: "{user_question}"
 {f'Perfil filtrado: {profile_filter}' if profile_filter else 'Sem filtro de perfil'}
+
+INFORMAÇÃO CRÍTICA:
+- Roberto Salles (ou Roberto Sales) = EX-REITOR DA UFF (2009-2018)
+- Perguntas sobre ele DEVEM buscar em NOTÍCIAS históricas
+- NÃO confundir com o reitor atual (posts @reitor são de 2023-2025)
 
 ## SUA TAREFA:
 Analise a pergunta e decida qual(is) ferramenta(s) usar para respondê-la da melhor forma.
@@ -225,6 +266,24 @@ Pergunta: "O que estão falando do reitor em 2024?"
     "reasoning": "Pergunta sobre CONTEÚDO relacionado ao reitor. Busca semântica com filtro de perfil",
     "actions": [
         {{"tool": "semantic_search", "params": {{"query": "reitor UFF ações gestão decisões anúncios", "n_results": 10}}}}
+    ]
+}}
+
+Pergunta: "O que o ex-reitor Roberto Salles achava das cotas?"
+{{
+    "reasoning": "Pergunta sobre OPINIÃO/POSICIONAMENTO do ex-reitor (2009-2018). Deve buscar em NOTÍCIAS, não em posts atuais. Combinar busca por pessoa + busca semântica APENAS EM NOTÍCIAS (content_type_filter='news')",
+    "actions": [
+        {{"tool": "search_news_by_person", "params": {{"person_name": "Roberto Salles", "limit": 15}}}},
+        {{"tool": "semantic_search", "params": {{"query": "cotas ações afirmativas política racial reserva vagas lei educação", "n_results": 15, "content_type_filter": "news"}}}}
+    ]
+}}
+
+Pergunta: "O que Roberto Sales fez quando era reitor?"
+{{
+    "reasoning": "Pergunta sobre AÇÕES do ex-reitor Roberto Sales (variação do nome Salles). Período histórico 2009-2018. Buscar em NOTÍCIAS",
+    "actions": [
+        {{"tool": "search_news_by_person", "params": {{"person_name": "Roberto Salles", "limit": 20}}}},
+        {{"tool": "search_news_by_person", "params": {{"person_name": "Roberto Sales", "limit": 20}}}}
     ]
 }}
 
@@ -399,16 +458,36 @@ IMPORTANTE:
                 )
                 return [{'metadata': result, 'is_sentiment': True}]
             
+            elif tool == 'get_news_articles':
+                return self.query_tools.get_news_articles(
+                    limit=params.get('limit', 10),
+                    min_date=params.get('min_date'),
+                    max_date=params.get('max_date'),
+                    publisher=params.get('publisher')
+                )
+            
+            elif tool == 'search_news_by_person':
+                return self.query_tools.search_news_by_person(
+                    person_name=params.get('person_name', ''),
+                    limit=params.get('limit', 10)
+                )
+            
+            elif tool == 'get_news_statistics':
+                stats = self.query_tools.get_news_statistics()
+                return [{'metadata': stats, 'is_news_stats': True}]
+            
             elif tool == 'semantic_search':
                 query = params.get('query', '')
                 n_results = params.get('n_results', 5)
                 profile = params.get('profile')
+                content_type = params.get('content_type_filter')  # Novo parâmetro
                 
                 # Busca no embedding manager
                 raw_results = self.embedding_manager.search(
                     query=query,
                     n_results=n_results,
-                    profile_filter=profile
+                    profile_filter=profile,
+                    content_type_filter=content_type  # Passa filtro de tipo
                 )
                 
                 # Converte para formato padrão (lista de dicts)
@@ -568,23 +647,56 @@ IMPORTANTE:
             
             return text
         
-        # Posts regulares
+        # Verifica se é estatística de notícias
+        if results[0].get('is_news_stats'):
+            stats = results[0]['metadata']
+            text = "## Estatísticas de Notícias:\n\n"
+            text += f"- Total de notícias: {stats.get('total_news', 0)}\n"
+            
+            if stats.get('date_range'):
+                dr = stats['date_range']
+                text += f"- Período coberto: {dr.get('oldest', 'N/A')[:10]} até {dr.get('newest', 'N/A')[:10]}\n"
+            
+            text += "\n### Publishers/Veículos:\n"
+            for pub in stats.get('publishers', [])[:10]:
+                text += f"- {pub['name']}: {pub['count']} notícias\n"
+            
+            return text
+        
+        # Posts/notícias normais
         text = f"## Resultados de {tool_name}:\n\n"
         for i, post in enumerate(results[:10], 1):
             meta = post.get('metadata', {})
             doc = post.get('document', '')
+            content_type = meta.get('content_type', 'instagram_post')
             
-            text += f"**Post {i}** (@{meta.get('profile', 'unknown')})\n"
-            text += f"- Curtidas: {meta.get('likesCount', 0)}\n"
-            text += f"- Comentários: {meta.get('commentsCount', 0)}\n"
-            text += f"- Data: {meta.get('timestamp', 'N/A')[:10]}\n"
-            text += f"- Link: {meta.get('url', 'N/A')}\n"
-            
-            # Adiciona trecho do texto/legenda
-            if doc:
-                text += f"- Conteúdo: {doc[:200]}...\n"
-            elif meta.get('caption'):
-                text += f"- Legenda: {meta['caption'][:200]}...\n"
+            # Formatação específica por tipo de conteúdo
+            if content_type == 'news':
+                # Formatação para notícias
+                text += f"**Notícia {i}**\n"
+                text += f"- Título: {meta.get('title', 'N/A')}\n"
+                text += f"- Publisher: {meta.get('publisher_name', 'N/A')}\n"
+                text += f"- Data: {meta.get('timestamp', 'N/A')[:10]}\n"
+                text += f"- Link: {meta.get('url', 'N/A')}\n"
+                
+                # Para notícias, incluir MAIS conteúdo para o LLM ter contexto completo
+                if meta.get('description'):
+                    text += f"- Descrição: {meta['description'][:500]}...\n"
+                if doc:
+                    text += f"- Conteúdo: {doc[:800]}...\n"
+            else:
+                # Formatação para posts do Instagram
+                text += f"**Post {i}** (@{meta.get('profile', 'unknown')})\n"
+                text += f"- Curtidas: {meta.get('likesCount', 0)}\n"
+                text += f"- Comentários: {meta.get('commentsCount', 0)}\n"
+                text += f"- Data: {meta.get('timestamp', 'N/A')[:10]}\n"
+                text += f"- Link: {meta.get('url', 'N/A')}\n"
+                
+                # Adiciona trecho do texto/legenda
+                if doc:
+                    text += f"- Conteúdo: {doc[:200]}...\n"
+                elif meta.get('caption'):
+                    text += f"- Legenda: {meta['caption'][:200]}...\n"
             
             text += "\n"
         

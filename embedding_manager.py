@@ -71,14 +71,14 @@ class EmbeddingManager:
     
     def add_posts(self, posts: List[Dict[str, Any]], batch_size: int = 100):
         """
-        Adiciona posts ao banco vetorial.
+        Adiciona posts e notícias ao banco vetorial.
         
         Args:
-            posts: Lista de posts processados
+            posts: Lista de posts/notícias processados
             batch_size: Tamanho do lote para processamento
         """
         total = len(posts)
-        print(f"\nIniciando indexação de {total} posts...")
+        print(f"\nIniciando indexação de {total} documentos...")
         
         for i in range(0, total, batch_size):
             batch = posts[i:i + batch_size]
@@ -92,7 +92,7 @@ class EmbeddingManager:
                 # Prepara documento
                 doc_text = post['text']
                 
-                # Metadados
+                # Metadados base
                 metadata = {
                     'profile': post['profile'],
                     'url': post['url'],
@@ -100,10 +100,27 @@ class EmbeddingManager:
                     'likesCount': post['likesCount'],
                     'commentsCount': post['commentsCount'],
                     'type': post['type'],
-                    'caption': post.get('caption', '')[:500],  # Limita tamanho
-                    'hashtags': json.dumps(post.get('hashtags', [])),
-                    'mentions': json.dumps(post.get('mentions', [])),
+                    'content_type': post.get('content_type', 'instagram_post'),
                 }
+                
+                # Metadados específicos por tipo de conteúdo
+                if post.get('content_type') == 'news':
+                    # Metadados de notícias
+                    metadata.update({
+                        'title': post.get('title', '')[:500],
+                        'description': post.get('description', '')[:500],
+                        'publisher_name': post.get('publisher_name', ''),
+                        'publisher_link': post.get('publisher_link', ''),
+                        'country': post.get('country', ''),
+                        'language': post.get('language', ''),
+                    })
+                else:
+                    # Metadados de posts do Instagram
+                    metadata.update({
+                        'caption': post.get('caption', '')[:500],
+                        'hashtags': json.dumps(post.get('hashtags', [])),
+                        'mentions': json.dumps(post.get('mentions', [])),
+                    })
                 
                 # Gera embedding
                 embedding = self.generate_embedding(doc_text)
@@ -122,7 +139,7 @@ class EmbeddingManager:
             )
             
             progress = min(i + batch_size, total)
-            print(f"Progresso: {progress}/{total} posts indexados ({(progress/total)*100:.1f}%)")
+            print(f"Progresso: {progress}/{total} documentos indexados ({(progress/total)*100:.1f}%)")
         
         print(f"✓ Indexação concluída! Total de documentos: {self.collection.count()}")
     
@@ -130,15 +147,17 @@ class EmbeddingManager:
         self, 
         query: str, 
         n_results: int = 5,
-        profile_filter: str = None
+        profile_filter: str = None,
+        content_type_filter: str = None
     ) -> Dict[str, Any]:
         """
-        Busca posts relevantes baseado em uma query.
+        Busca posts/notícias relevantes baseado em uma query.
         
         Args:
             query: Texto da busca
             n_results: Número de resultados a retornar
             profile_filter: Filtrar por perfil específico (opcional)
+            content_type_filter: Filtrar por tipo de conteúdo: 'instagram_post' ou 'news' (opcional)
             
         Returns:
             Dicionário com resultados da busca
@@ -150,6 +169,8 @@ class EmbeddingManager:
         where = {}
         if profile_filter:
             where['profile'] = profile_filter
+        if content_type_filter:
+            where['content_type'] = content_type_filter
         
         # Busca no ChromaDB
         results = self.collection.query(

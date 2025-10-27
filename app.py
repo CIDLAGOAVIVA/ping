@@ -341,73 +341,123 @@ class InstagramRAGApp:
             except:
                 date_str = "Data não disponível"
             
-            # Formata caption
-            caption = metadata.get('caption', 'Sem legenda')
-            if len(caption) > 300:
-                caption = caption[:300] + "..."
+            # Detecta tipo de conteúdo
+            content_type = metadata.get('content_type', 'instagram_post')
             
-            # Card do post moderno
-            engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
-            html += f"""
-            <div style='
-                border: 1px solid #e0e0e0; 
-                border-radius: 12px; 
-                padding: 1.2rem; 
-                margin: 0.8rem 0; 
-                background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                transition: transform 0.2s;
-            ' onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.12)'" 
-               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'">
-                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
-                    <div style='display: flex; align-items: center; gap: 0.5rem;'>
+            if content_type == 'news':
+                # Formatação para notícias
+                title = metadata.get('title', 'Sem título')
+                description = metadata.get('description', '')
+                publisher = metadata.get('publisher_name', 'Desconhecido')
+                
+                if len(description) > 400:
+                    description = description[:400] + "..."
+                
+                html += f"""
+                <div style='
+                    border: 1px solid #ff9800; 
+                    border-radius: 12px; 
+                    padding: 1.2rem; 
+                    margin: 0.8rem 0; 
+                    background: linear-gradient(135deg, #fff8f0 0%, #ffffff 100%);
+                    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.15);
+                ' onmouseover="this.style.boxShadow='0 4px 12px rgba(255, 152, 0, 0.25)'" 
+                   onmouseout="this.style.boxShadow='0 2px 8px rgba(255, 152, 0, 0.15)'">
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
                         <span style='
-                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
                             color: white;
                             padding: 0.3rem 0.8rem;
                             border-radius: 20px;
                             font-weight: 600;
                             font-size: 0.9rem;
-                        '>@{metadata['profile']}</span>
+                        '>📰 Notícia</span>
+                        <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
                     </div>
-                    <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
+                    <h4 style='margin: 0.5rem 0; color: #ff9800; font-size: 1.1rem;'>{title}</h4>
+                    <p style='margin: 0.5rem 0; color: #666; font-size: 0.9rem;'><strong>📡 {publisher}</strong></p>
+                    <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{description}</p>
+                    <a href='{metadata['url']}' target='_blank' style='
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+                        color: white;
+                        text-decoration: none;
+                        padding: 0.6rem 1.2rem;
+                        border-radius: 8px;
+                        font-size: 0.9rem;
+                        font-weight: 600;
+                    ' onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        🔗 Ler notícia completa
+                    </a>
                 </div>
-                <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{caption}</p>
+                """
+            else:
+                # Formatação para posts do Instagram
+                caption = metadata.get('caption', 'Sem legenda')
+                if len(caption) > 300:
+                    caption = caption[:300] + "..."
+                
+                engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
+                html += f"""
                 <div style='
-                    display: flex; 
-                    gap: 1.5rem; 
-                    margin: 1rem 0; 
-                    padding: 0.8rem; 
-                    background: rgba(102, 126, 234, 0.05); 
-                    border-radius: 8px;
-                '>
-                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
-                        ❤️ <strong style='color: #e91e63;'>{metadata['likesCount']:,}</strong> curtidas
-                    </span>
-                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
-                        💬 <strong style='color: #2196f3;'>{metadata['commentsCount']:,}</strong> comentários
-                    </span>
-                    <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
-                        📊 <strong style='color: #667eea;'>{engagement:,}</strong> engajamento
-                    </span>
+                    border: 1px solid #e0e0e0; 
+                    border-radius: 12px; 
+                    padding: 1.2rem; 
+                    margin: 0.8rem 0; 
+                    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                ' onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.12)'" 
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.08)'">
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
+                        <div style='display: flex; align-items: center; gap: 0.5rem;'>
+                            <span style='
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                                padding: 0.3rem 0.8rem;
+                                border-radius: 20px;
+                                font-weight: 600;
+                                font-size: 0.9rem;
+                            '>@{metadata['profile']}</span>
+                        </div>
+                        <span style='color: #888; font-size: 0.85rem;'>📅 {date_str}</span>
+                    </div>
+                    <p style='margin: 0.8rem 0; line-height: 1.6; color: #333;'>{caption}</p>
+                    <div style='
+                        display: flex; 
+                        gap: 1.5rem; 
+                        margin: 1rem 0; 
+                        padding: 0.8rem; 
+                        background: rgba(102, 126, 234, 0.05); 
+                        border-radius: 8px;
+                    '>
+                        <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                            ❤️ <strong style='color: #e91e63;'>{metadata['likesCount']:,}</strong> curtidas
+                        </span>
+                        <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                            💬 <strong style='color: #2196f3;'>{metadata['commentsCount']:,}</strong> comentários
+                        </span>
+                        <span style='color: #666; font-size: 0.9rem; font-weight: 500;'>
+                            📊 <strong style='color: #667eea;'>{engagement:,}</strong> engajamento
+                        </span>
+                    </div>
+                    <a href='{metadata['url']}' target='_blank' style='
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.5rem;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                        text-decoration: none;
+                        padding: 0.6rem 1.2rem;
+                        border-radius: 8px;
+                        font-size: 0.9rem;
+                        font-weight: 600;
+                    ' onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        🔗 Ver no Instagram
+                    </a>
                 </div>
-                <a href='{metadata['url']}' target='_blank' style='
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    text-decoration: none;
-                    padding: 0.6rem 1.2rem;
-                    border-radius: 8px;
-                    font-size: 0.9rem;
-                    font-weight: 600;
-                    transition: opacity 0.2s;
-                ' onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
-                    🔗 Ver no Instagram
-                </a>
-            </div>
-            """
+                """
         
         html += "</div>"
         return html

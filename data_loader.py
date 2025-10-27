@@ -12,16 +12,17 @@ import emoji
 
 
 class InstagramDataLoader:
-    """Classe para carregar e processar dados de posts do Instagram."""
+    """Classe para carregar e processar dados de posts do Instagram e notícias."""
 
     def __init__(self, data_dir: str = "data"):
         """
         Inicializa o carregador de dados.
         
         Args:
-            data_dir: Diretório contendo os arquivos JSON dos posts
+            data_dir: Diretório contendo os arquivos JSON dos posts e notícias
         """
         self.data_dir = Path(data_dir)
+        self.news_files = ['_smoking_gun.json']  # Arquivos de notícias
         
     def clean_text(self, text: str) -> str:
         """
@@ -103,6 +104,81 @@ class InstagramDataLoader:
         except:
             return datetime.now()
     
+    def extract_news_text(self, news: Dict[str, Any]) -> str:
+        """
+        Extrai e concatena texto relevante de uma notícia.
+        
+        Args:
+            news: Dicionário contendo os dados de uma notícia
+            
+        Returns:
+            Texto concatenado e limpo da notícia
+        """
+        text_parts = []
+        
+        # Título
+        if title := news.get('title'):
+            text_parts.append(f"Título: {self.clean_text(title)}")
+        
+        # Descrição
+        if description := news.get('description'):
+            text_parts.append(f"Descrição: {self.clean_text(description)}")
+        
+        # Conteúdo principal
+        if content := news.get('content'):
+            text_parts.append(f"Conteúdo: {self.clean_text(content)}")
+        
+        return " ".join(text_parts)
+    
+    def load_news_articles(self, filename: str = "_smoking_gun.json") -> List[Dict[str, Any]]:
+        """
+        Carrega notícias de um arquivo JSON.
+        
+        Args:
+            filename: Nome do arquivo JSON com notícias
+            
+        Returns:
+            Lista de notícias processadas
+        """
+        file_path = self.data_dir / filename
+        
+        if not file_path.exists():
+            print(f"⚠️  Arquivo de notícias não encontrado: {file_path}")
+            return []
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            news_items = json.load(f)
+        
+        processed_news = []
+        
+        for idx, news in enumerate(news_items):
+            # Extrai informações relevantes
+            # Usa índice para garantir IDs únicos (0, 1, 2, ...)
+            news_data = {
+                'id': f"news_{idx}",  # ID único baseado no índice
+                'profile': 'noticias',  # Identificador especial para notícias
+                'content_type': 'news',
+                'type': 'Article',
+                'text': self.extract_news_text(news),
+                'url': news.get('link', ''),
+                'title': news.get('title', ''),
+                'description': news.get('description', ''),
+                'content': news.get('content', ''),
+                'timestamp': self.parse_timestamp(news.get('published', '')),
+                'publisher_name': news.get('publisher_name', ''),
+                'publisher_link': news.get('publisher_link', ''),
+                'country': news.get('country', ''),
+                'language': news.get('language', ''),
+                'likesCount': 0,  # Notícias não têm likes
+                'commentsCount': 0,  # Notícias não têm comentários
+            }
+            
+            # Só adiciona notícias com conteúdo textual
+            if news_data['text'].strip():
+                processed_news.append(news_data)
+        
+        return processed_news
+    
     def load_profile_posts(self, profile_name: str) -> List[Dict[str, Any]]:
         """
         Carrega posts de um perfil específico.
@@ -155,8 +231,9 @@ class InstagramDataLoader:
         """
         all_posts = []
         
-        # Lista todos os arquivos JSON no diretório
-        json_files = list(self.data_dir.glob("*.json"))
+        # Lista todos os arquivos JSON no diretório (exceto notícias)
+        json_files = [f for f in self.data_dir.glob("*.json") 
+                      if f.name not in self.news_files]
         
         print(f"Encontrados {len(json_files)} arquivos de perfis")
         
@@ -172,32 +249,57 @@ class InstagramDataLoader:
         print(f"\nTotal de posts carregados: {len(all_posts)}")
         return all_posts
     
+    def load_all_content(self) -> List[Dict[str, Any]]:
+        """
+        Carrega todo o conteúdo: posts do Instagram e notícias.
+        
+        Returns:
+            Lista de todo o conteúdo processado
+        """
+        all_content = []
+        
+        # Carrega posts do Instagram
+        all_content.extend(self.load_all_posts())
+        
+        # Carrega notícias
+        for news_file in self.news_files:
+            try:
+                news_articles = self.load_news_articles(news_file)
+                all_content.extend(news_articles)
+                print(f"✓ Carregadas {len(news_articles)} notícias de: {news_file}")
+            except Exception as e:
+                print(f"✗ Erro ao carregar notícias de {news_file}: {e}")
+        
+        print(f"\n📊 Total de conteúdo carregado: {len(all_content)}")
+        return all_content
+    
     def get_profile_stats(self) -> Dict[str, Any]:
         """
-        Retorna estatísticas sobre os perfis carregados.
+        Retorna estatísticas sobre os perfis carregados, incluindo notícias.
         
         Returns:
             Dicionário com estatísticas
         """
-        all_posts = self.load_all_posts()
+        all_content = self.load_all_content()
         
         stats = {}
-        for post in all_posts:
-            profile = post['profile']
+        for item in all_content:
+            profile = item['profile']
             if profile not in stats:
                 stats[profile] = {
                     'total_posts': 0,
                     'total_likes': 0,
                     'total_comments': 0,
+                    'content_type': item.get('content_type', 'instagram_post'),
                     'date_range': {'oldest': None, 'newest': None}
                 }
             
             stats[profile]['total_posts'] += 1
-            stats[profile]['total_likes'] += post['likesCount']
-            stats[profile]['total_comments'] += post['commentsCount']
+            stats[profile]['total_likes'] += item['likesCount']
+            stats[profile]['total_comments'] += item['commentsCount']
             
             # Atualiza intervalo de datas
-            post_date = post['timestamp']
+            post_date = item['timestamp']
             if stats[profile]['date_range']['oldest'] is None or post_date < stats[profile]['date_range']['oldest']:
                 stats[profile]['date_range']['oldest'] = post_date
             if stats[profile]['date_range']['newest'] is None or post_date > stats[profile]['date_range']['newest']:
