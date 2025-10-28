@@ -1495,11 +1495,11 @@ class InstagramRAGApp:
                 with gr.TabItem("📖 Documentação"):
                     gr.HTML(f"""
                     <div style='padding: 2rem;'>
-                        <h2 style='color: #333;'>📖 Como Usar o Sistema</h2>
+                        <h2 style='color: var(--text-primary);'>📖 Como Usar o Sistema</h2>
                         
-                        <div style='background: #f0f4ff; border-left: 4px solid #667eea; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                        <div style='background: var(--bg-secondary); border-left: 4px solid #667eea; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
                             <h3 style='margin-top: 0; color: #667eea;'>✨ Perguntas Suportadas</h3>
-                            <ul>
+                            <ul style='color: var(--text-primary);'>
                                 <li><strong>Estatísticas:</strong> "Qual é o post mais curtido?" "Quantos posts tem?"</li>
                                 <li><strong>Busca:</strong> "Posts sobre HUAP" "Mencione iniciativas ambientais"</li>
                                 <li><strong>Comparações:</strong> "Compare @reitor e @dceuff" "Qual perfil tem mais engajamento?"</li>
@@ -1508,9 +1508,9 @@ class InstagramRAGApp:
                             </ul>
                         </div>
                         
-                        <div style='background: #f1f8f4; border-left: 4px solid #4caf50; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                        <div style='background: var(--bg-secondary); border-left: 4px solid #4caf50; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
                             <h3 style='margin-top: 0; color: #4caf50;'>💚 Dicas</h3>
-                            <ul>
+                            <ul style='color: var(--text-primary);'>
                                 <li>Use linguagem natural - não precisa ser exato</li>
                                 <li>Combine filtros de perfil com perguntas para resultados mais específicos</li>
                                 <li>Verifique o histórico para rever respostas anteriores</li>
@@ -1518,9 +1518,9 @@ class InstagramRAGApp:
                             </ul>
                         </div>
                         
-                        <div style='background: #fff8f0; border-left: 4px solid #ff9800; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                        <div style='background: var(--bg-secondary); border-left: 4px solid #ff9800; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
                             <h3 style='margin-top: 0; color: #ff9800;'>🔧 Configurações e Ingestão</h3>
-                            <p>
+                            <p style='color: var(--text-primary);'>
                                 <strong>Filtro de Perfis:</strong> Selecione um ou mais perfis clicando nos botões. Todos os selecionados serão incluídos na busca<br>
                                 <strong>Nº Posts:</strong> Ajuste quantos posts recuperar (se em modo clássico)<br>
                                 <strong>Aba Ingestão:</strong> Upload de documentos com conversão automática via Docling e vetorização<br>
@@ -1528,9 +1528,9 @@ class InstagramRAGApp:
                             </p>
                         </div>
                         
-                        <div style='background: #f0f9ff; border-left: 4px solid #2196f3; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                        <div style='background: var(--bg-secondary); border-left: 4px solid #2196f3; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
                             <h3 style='margin-top: 0; color: #2196f3;'>📥 Pipeline de Ingestão</h3>
-                            <ul>
+                            <ul style='color: var(--text-primary);'>
                                 <li><strong>Formatos Suportados:</strong> PDF, DOCX, PPTX, TXT, MD, HTML</li>
                                 <li><strong>Conversão:</strong> Docling extrai texto, tabelas e figuras estruturando tudo em JSON</li>
                                 <li><strong>Chunks Automáticos:</strong> Documentos grandes são divididos por página</li>
@@ -1540,9 +1540,9 @@ class InstagramRAGApp:
                             </ul>
                         </div>
                         
-                        <div style='background: #f0f0f0; border-radius: 8px; padding: 1.5rem; margin-top: 2rem;'>
-                            <h3 style='margin-top: 0; color: #333;'>ℹ️ Sobre o Sistema</h3>
-                            <ul style='color: #666; font-size: 0.9rem;'>
+                        <div style='background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; margin-top: 2rem;'>
+                            <h3 style='margin-top: 0; color: var(--text-primary);'>ℹ️ Sobre o Sistema</h3>
+                            <ul style='color: var(--text-secondary); font-size: 0.9rem;'>
                                 <li><strong>Posts Indexados:</strong> {self.stats['indexed_posts']:,}</li>
                                 <li><strong>Perfis Monitorados:</strong> {', '.join(['@' + p for p in self.stats['profiles']])}</li>
                                 <li><strong>Modelo de Embedding:</strong> {self.stats['embedding_model']}</li>
