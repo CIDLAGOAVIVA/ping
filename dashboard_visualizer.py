@@ -24,7 +24,8 @@ class DashboardVisualizer:
         summary = metrics.get('summary', {})
         posts_data = metrics.get('posts', {})
         news_data = metrics.get('news', {})
-        sentiment_data = metrics.get('sentiment', {})  # 🆕
+        sentiment_data = metrics.get('sentiment', {})
+        emerging_topics_data = metrics.get('emerging_topics', {})  # 🆕
         
         html = f"""
         <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
@@ -43,6 +44,9 @@ class DashboardVisualizer:
             
             <!-- Card de Sentimento (Destaque) -->
             {DashboardVisualizer._generate_sentiment_card(sentiment_data)}
+            
+            <!-- 🆕 Card de Tópicos Emergentes -->
+            {DashboardVisualizer._generate_emerging_topics_card(emerging_topics_data)}
             
             <!-- Gráficos de Engajamento -->
             {DashboardVisualizer._generate_engagement_charts(posts_data)}
@@ -263,6 +267,141 @@ class DashboardVisualizer:
             '>
                 <strong>ℹ️ Metodologia:</strong> {sentiment_data.get('note', 'Análise de sentimento baseada em palavras-chave')}
             </div>
+        </div>
+        """
+    
+    @staticmethod
+    def _generate_emerging_topics_card(emerging_topics_data: Dict) -> str:
+        """🆕 Gera card com tópicos emergentes detectados."""
+        if not emerging_topics_data or emerging_topics_data.get('total_topics', 0) == 0:
+            return ""
+        
+        topics = emerging_topics_data.get('topics', [])
+        total_analyzed = emerging_topics_data.get('total_posts_analyzed', 0)
+        
+        # Gera lista de tópicos
+        topics_html = ""
+        for i, topic in enumerate(topics[:10], 1):
+            term = topic['term']
+            count = topic['count']
+            percentage = topic['percentage']
+            growth = topic.get('growth_indicator', 0)
+            
+            # Define cor baseada no crescimento
+            if growth > 50:
+                trend_emoji = '🔥'
+                trend_text = 'Em alta'
+                trend_color = '#ff5722'
+            elif growth > 0:
+                trend_emoji = '📈'
+                trend_text = 'Crescendo'
+                trend_color = '#ff9800'
+            else:
+                trend_emoji = '📊'
+                trend_text = 'Estável'
+                trend_color = '#2196f3'
+            
+            topics_html += f"""
+            <div style='
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 1rem;
+                background: var(--bg-primary);
+                border-radius: 8px;
+                margin-bottom: 0.75rem;
+                border-left: 4px solid {trend_color};
+                transition: transform 0.2s ease;
+            '>
+                <div style='flex: 1;'>
+                    <div style='display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;'>
+                        <span style='font-size: 1.5rem;'>{trend_emoji}</span>
+                        <span style='font-weight: 600; color: var(--text-primary); font-size: 1.05rem;'>
+                            {term}
+                        </span>
+                        <span style='
+                            background: {trend_color};
+                            color: white;
+                            padding: 0.15rem 0.5rem;
+                            border-radius: 12px;
+                            font-size: 0.7rem;
+                            font-weight: 600;
+                        '>
+                            {trend_text}
+                        </span>
+                    </div>
+                    <div style='font-size: 0.8rem; color: var(--text-secondary);'>
+                        Mencionado em <strong>{count}</strong> posts ({percentage}% do período)
+                    </div>
+                </div>
+                <div style='text-align: right;'>
+                    <div style='font-size: 1.5rem; font-weight: 700; color: {trend_color};'>
+                        #{i}
+                    </div>
+                </div>
+            </div>
+            """
+        
+        # Hashtags mais usadas
+        hashtags_html = ""
+        top_hashtags = emerging_topics_data.get('top_hashtags', [])
+        if top_hashtags:
+            hashtags_html = """
+            <div style='margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-primary);'>
+                <h4 style='margin: 0 0 1rem 0; color: var(--text-primary);'>🏷️ Hashtags em Destaque</h4>
+                <div style='display: flex; flex-wrap: wrap; gap: 0.75rem;'>
+            """
+            
+            for hashtag in top_hashtags[:15]:
+                tag = hashtag['tag']
+                count = hashtag['count']
+                
+                # Tamanho proporcional à frequência
+                font_size = min(1.2 + (count / 10), 2.0)
+                
+                hashtags_html += f"""
+                <span style='
+                    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                    color: white;
+                    padding: 0.5rem 1rem;
+                    border-radius: 20px;
+                    font-size: {font_size}rem;
+                    font-weight: 600;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                '>
+                    #{tag} <span style='opacity: 0.8; font-size: 0.75rem;'>({count})</span>
+                </span>
+                """
+            
+            hashtags_html += """
+                </div>
+            </div>
+            """
+        
+        return f"""
+        <div style='background: var(--bg-secondary); border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid var(--border-primary);'>
+            <h3 style='margin: 0 0 1.5rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;'>
+                🔍 Tópicos Emergentes
+                <span style='font-size: 0.75rem; font-weight: normal; background: var(--primary); color: white; padding: 0.25rem 0.75rem; border-radius: 12px;'>
+                    {total_analyzed:,} posts analisados
+                </span>
+            </h3>
+            
+            <div style='
+                background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1.5rem;
+                border-left: 4px solid var(--primary);
+            '>
+                <p style='margin: 0; font-size: 0.9rem; color: var(--text-secondary);'>
+                    <strong>ℹ️ Sobre esta análise:</strong> Identificamos automaticamente os termos e temas mais mencionados nas legendas e hashtags dos posts no período selecionado, considerando frequência e contexto.
+                </p>
+            </div>
+            
+            {topics_html}
+            
+            {hashtags_html}
         </div>
         """
     
@@ -508,6 +647,32 @@ def main():
             'trend': 'negative',
             'profiles': ['dceuff', 'reitor'],
             'note': 'Análise baseada em amostra de 100 registros'
+        },
+        'emerging_topics': {  # 🆕 Mock de tópicos emergentes
+            'total_topics': 8,
+            'total_posts_analyzed': 2400,
+            'topics': [
+                {'term': 'greve', 'count': 156, 'percentage': 6.5, 'growth_indicator': 75},
+                {'term': 'HUAP', 'count': 134, 'percentage': 5.6, 'growth_indicator': 60},
+                {'term': 'educação', 'count': 98, 'percentage': 4.1, 'growth_indicator': 45},
+                {'term': 'reitoria', 'count': 87, 'percentage': 3.6, 'growth_indicator': 30},
+                {'term': 'estudantes', 'count': 76, 'percentage': 3.2, 'growth_indicator': 20},
+                {'term': 'universidade', 'count': 65, 'percentage': 2.7, 'growth_indicator': 10},
+                {'term': 'campus', 'count': 54, 'percentage': 2.3, 'growth_indicator': 5},
+                {'term': 'pesquisa', 'count': 43, 'percentage': 1.8, 'growth_indicator': 0}
+            ],
+            'top_hashtags': [
+                {'tag': 'UFF', 'count': 245},
+                {'tag': 'GreveNaUFF', 'count': 156},
+                {'tag': 'HUAP', 'count': 134},
+                {'tag': 'EducaçãoPública', 'count': 98},
+                {'tag': 'UniversidadePública', 'count': 87},
+                {'tag': 'DCE', 'count': 76},
+                {'tag': 'MovimentoEstudantil', 'count': 65},
+                {'tag': 'Niterói', 'count': 54},
+                {'tag': 'ForaReitor', 'count': 43},
+                {'tag': 'DefendaUFF', 'count': 38}
+            ]
         }
     }
     

@@ -439,7 +439,6 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         
         negative_keywords = [
             'problema', 'crítica', 'péssimo', 'ruim', 'revolta',
-            'absurdo', 'inadmissível', 'vergonha', 'indignação', 'protesto',
             'denúncia', 'descaso', 'abandono', 'precário', 'injustiça',
             'horrível', 'terrível', 'lamentável', 'triste', 'decepção'
         ]
@@ -650,148 +649,225 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         profile_filter: Optional[List[str]] = None,
+        use_llm_sentiment: bool = False,
         use_cache: bool = True,
-        content_filter: str = "both"  # 🆕 Filtro de conteúdo
+        content_filter: str = "both"
     ) -> Dict[str, Any]:
         """
-        Retorna dados agregados para um período específico.
+        Retorna métricas para um intervalo de datas.
         
         Args:
-            start_date: Data inicial (ISO format ou None para sem limite)
-            end_date: Data final (ISO format ou None para sem limite)
-            profile_filter: Lista de perfis para filtrar (ex: ["dceuff", "reitor"])
-            use_cache: Se True, usa cache para sentimento (padrão: True)
+            start_date: Data inicial (ISO format)
+            end_date: Data final (ISO format)
+            profile_filter: Lista de perfis para filtrar
+            use_llm_sentiment: Se True, usa LLM para análise de sentimento
+            use_cache: Se True, usa cache de sentimento
             content_filter: Tipo de conteúdo ("both", "caption", "comments")
         
         Returns:
             Dicionário com métricas agregadas
         """
-        # Busca todos os documentos
-        where_clause = {}
-        
-        if profile_filter:
-            if len(profile_filter) == 1:
-                where_clause['profile'] = profile_filter[0]
-            # Se múltiplos perfis, não filtra (ChromaDB não suporta OR)
-        
+        # Busca todos os dados
         results = self.collection.get(
-            where=where_clause if where_clause else None,
-            limit=10000,
-            include=['metadatas', 'documents']
+            limit=100000,
+            include=['documents', 'metadatas']
         )
         
         if not results['ids']:
             return self._empty_metrics()
         
-        # Normaliza datas de filtro
-        start_filter = None
-        end_filter = None
-        
-        if start_date:
-            try:
-                start_filter = self._normalize_datetime(date_parser.parse(start_date))
-            except Exception as e:
-                print(f"⚠️ Erro ao parsear start_date '{start_date}': {e}")
-        
-        if end_date:
-            try:
-                end_filter = self._normalize_datetime(date_parser.parse(end_date))
-            except Exception as e:
-                print(f"⚠️ Erro ao parsear end_date '{end_date}': {e}")
-        
-        # Filtra por data
+        # Filtra por data e perfil
         filtered_posts = []
         filtered_news = []
-        filtered_documents = []  # 🆕 Para análise de sentimento
         
         for i, metadata in enumerate(results['metadatas']):
-            try:
-                # Parse e normaliza data do post
-                post_date = date_parser.parse(metadata['timestamp'])
-                post_date = self._normalize_datetime(post_date)
-                
-                # Aplica filtros de data
-                if start_filter and post_date < start_filter:
-                    continue
-                
-                if end_filter and post_date > end_filter:
-                    continue
-                
-                # Separa posts e notícias
-                if metadata.get('content_type') == 'news':
-                    filtered_news.append(metadata)
-                else:
-                    filtered_posts.append(metadata)
-                    # 🆕 Armazena documento para sentimento
-                    if i < len(results['documents']):
-                        filtered_documents.append({
-                            'text': results['documents'][i],
-                            'metadata': metadata
-                        })
-            
-            except Exception as e:
-                print(f"⚠️ Erro ao processar metadata: {e}")
-                print(f"   Timestamp: {metadata.get('timestamp', 'N/A')}")
+            # Filtro de perfil
+            if profile_filter and metadata.get('profile') not in profile_filter:
                 continue
-        
-        # 🆕 Aplica filtro de conteúdo aos documentos
-        filtered_documents_with_content = []
-        for doc in filtered_documents:
-            filtered_text = self._filter_content_by_type(
-                doc['text'],
-                doc['metadata'],
-                content_filter
-            )
-            if filtered_text and filtered_text.strip():
-                filtered_documents_with_content.append({
-                    'text': filtered_text,
-                    'metadata': doc['metadata']
+            
+            # Filtro de data
+            if start_date or end_date:
+                try:
+                    post_date = date_parser.parse(metadata['timestamp'])
+                    post_date = self._normalize_datetime(post_date)
+                    
+                    if start_date:
+                        start_dt = date_parser.parse(start_date)
+                        start_dt = self._normalize_datetime(start_dt)
+                        if post_date < start_dt:
+                            continue
+                    
+                    if end_date:
+                        end_dt = date_parser.parse(end_date)
+                        end_dt = self._normalize_datetime(end_dt)
+                        if post_date > end_dt:
+                            continue
+                except Exception as e:
+                    print(f"⚠️ Erro ao parsear data: {e}")
+                    continue
+            
+            # Separa posts e notícias
+            content_type = metadata.get('content_type', 'instagram_post')
+            doc_data = {
+                'text': results['documents'][i],
+                'metadata': metadata,
+                'profile': metadata.get('profile', ''),
+                'url': metadata.get('url', ''),
+                'timestamp': metadata.get('timestamp', ''),
+                'likesCount': metadata.get('likesCount', 0),
+                'commentsCount': metadata.get('commentsCount', 0),
+                'caption': metadata.get('caption', ''),
+                'hashtags': metadata.get('hashtags', []),
+                'mentions': metadata.get('mentions', []),
+                'type': metadata.get('type', ''),
+                'content_type': content_type
+            }
+            
+            if content_type == 'news':
+                doc_data.update({
+                    'title': metadata.get('title', ''),
+                    'publisher_name': metadata.get('publisher_name', '')
                 })
-        
-        # 🆕 Verifica cache de sentimento
-        if use_cache:
-            profile_key = profile_filter[0] if profile_filter and len(profile_filter) == 1 else None
-            
-            cached_sentiment = self.cache.get(
-                profile=profile_key,
-                start_date=start_date,
-                end_date=end_date,
-                total_docs=len(filtered_documents_with_content),
-                content_filter=content_filter  # 🆕 Passa filtro
-            )
-            
-            if cached_sentiment:
-                sentiment_data = cached_sentiment
-                sentiment_data['cached'] = True
+                filtered_news.append(doc_data)
             else:
-                sentiment_data = self._analyze_sentiment_batch(
-                    filtered_documents_with_content,
-                    profile_filter
-                )
-                sentiment_data['cached'] = False
-                sentiment_data['content_filter'] = content_filter
-                
-                # Salva no cache
-                self.cache.set(
-                    sentiment_data,
-                    profile=profile_key,
-                    start_date=start_date,
-                    end_date=end_date,
-                    total_docs=len(filtered_documents_with_content),
-                    content_filter=content_filter  # 🆕 Passa filtro
-                )
-        else:
-            sentiment_data = self._analyze_sentiment_batch(
-                filtered_documents_with_content,
-                profile_filter
-            )
-            sentiment_data['cached'] = False
-            sentiment_data['content_filter'] = content_filter
+                filtered_posts.append(doc_data)
         
+        # Calcula métricas
         metrics = self._calculate_metrics(filtered_posts, filtered_news)
-        metrics['sentiment'] = sentiment_data
+        
+        # 🆕 Detecta tópicos emergentes
+        emerging_topics = self._detect_emerging_topics(filtered_posts)
+        metrics['emerging_topics'] = emerging_topics
+        
+        # Análise de sentimento (se solicitada)
+        if use_llm_sentiment and filtered_posts:
+            sentiment = self._analyze_sentiment_batch(
+                [{'text': p['text'], 'metadata': p['metadata']} for p in filtered_posts],
+                profiles=profile_filter,
+                use_llm=True
+            )
+            metrics['sentiment'] = sentiment
+        elif filtered_posts:
+            sentiment = self._analyze_sentiment_batch(
+                [{'text': p['text'], 'metadata': p['metadata']} for p in filtered_posts],
+                profiles=profile_filter,
+                use_llm=False
+            )
+            metrics['sentiment'] = sentiment
         
         return metrics
+    
+    def _detect_emerging_topics(self, posts: List[Dict]) -> Dict[str, Any]:
+        """
+        🆕 Detecta tópicos emergentes através das legendas e hashtags.
+        
+        Args:
+            posts: Lista de posts a analisar
+        
+        Returns:
+            Dicionário com tópicos emergentes e hashtags
+        """
+        if not posts:
+            return {
+                'total_topics': 0,
+                'total_posts_analyzed': 0,
+                'topics': [],
+                'top_hashtags': []
+            }
+        
+        # Palavras comuns a ignorar (stopwords)
+        stopwords = {
+            'de', 'da', 'do', 'das', 'dos', 'a', 'o', 'as', 'os', 'um', 'uma',
+            'e', 'é', 'para', 'com', 'por', 'em', 'no', 'na', 'nos', 'nas',
+            'que', 'se', 'não', 'mais', 'como', 'seu', 'sua', 'ou', 'ao',
+            'pelos', 'pelas', 'esse', 'essa', 'este', 'esta', 'isso', 'isto',
+            'aquele', 'aquela', 'aquilo', 'já', 'também', 'só', 'pelo', 'pela',
+            'até', 'sem', 'sob', 'sobre', 'após', 'antes', 'quando', 'onde',
+            'quem', 'qual', 'quais', 'quanto', 'quantos', 'foi', 'ser', 'ter',
+            'estar', 'fazer', 'ir', 'vir', 'dar', 'ver', 'saber', 'poder',
+            'hoje', 'ontem', 'amanhã', 'agora', 'depois', 'sempre', 'nunca',
+            'muito', 'pouco', 'tudo', 'nada', 'algo', 'alguém', 'ninguém',
+            'https', 'http', 'www', 'com', 'br', 'instagram', 'post', 'foto'
+        }
+        
+        # Contadores
+        term_counter = {}
+        hashtag_counter = {}
+        
+        for post in posts:
+            # Analisa caption/legenda
+            caption = post.get('caption', '')
+            if caption:
+                # Tokeniza e limpa
+                words = caption.lower().split()
+                for word in words:
+                    # Remove pontuação
+                    word = ''.join(c for c in word if c.isalnum() or c in ['á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç'])
+                    
+                    # Filtra palavras muito curtas ou stopwords
+                    if len(word) >= 4 and word not in stopwords:
+                        term_counter[word] = term_counter.get(word, 0) + 1
+            
+            # Analisa hashtags
+            hashtags = post.get('hashtags', [])
+            if isinstance(hashtags, list):
+                for tag in hashtags:
+                    tag_clean = tag.lower().replace('#', '')
+                    if len(tag_clean) >= 3:
+                        hashtag_counter[tag_clean] = hashtag_counter.get(tag_clean, 0) + 1
+        
+        # Top termos (ordenados por frequência)
+        top_terms = sorted(
+            term_counter.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:20]
+        
+        # Top hashtags
+        top_hashtags = sorted(
+            hashtag_counter.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:15]
+        
+        # Calcula "indicador de crescimento" (simulado baseado em frequência relativa)
+        total_posts = len(posts)
+        topics = []
+        for term, count in top_terms:
+            percentage = (count / total_posts) * 100
+            
+            # Indicador simplificado: quanto maior a frequência, maior o "crescimento"
+            # Em uma implementação real, compararia com período anterior
+            if percentage >= 5.0:
+                growth = 75  # Alta
+            elif percentage >= 3.0:
+                growth = 50  # Média-alta
+            elif percentage >= 2.0:
+                growth = 30  # Média
+            elif percentage >= 1.0:
+                growth = 10  # Baixa
+            else:
+                growth = 0   # Estável
+            
+            topics.append({
+                'term': term,
+                'count': count,
+                'percentage': round(percentage, 1),
+                'growth_indicator': growth
+            })
+        
+        # Formata hashtags
+        hashtags_list = [
+            {'tag': tag, 'count': count}
+            for tag, count in top_hashtags
+        ]
+        
+        return {
+            'total_topics': len(topics),
+            'total_posts_analyzed': total_posts,
+            'topics': topics,
+            'top_hashtags': hashtags_list
+        }
     
     def invalidate_cache(
         self,
