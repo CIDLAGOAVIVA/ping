@@ -676,7 +676,8 @@ class InstagramRAGApp:
         self,
         start_date: str = None,
         end_date: str = None,
-        profile_filter: list = None
+        profile_filter: list = None,
+        content_filter: str = "both"  # 🆕 Parâmetro de filtro de conteúdo
     ) -> str:
         """
         Retorna HTML do dashboard de análise com filtros aplicados.
@@ -685,6 +686,7 @@ class InstagramRAGApp:
             start_date: Data inicial (YYYY-MM-DD)
             end_date: Data final (YYYY-MM-DD)
             profile_filter: Lista de perfis selecionados
+            content_filter: Tipo de conteúdo ("both", "caption", "comments")
         
         Returns:
             HTML formatado
@@ -694,11 +696,12 @@ class InstagramRAGApp:
             if profile_filter:
                 profile_filter = [p.replace('@', '') for p in profile_filter]
             
-            # Busca métricas
+            # Busca métricas (🆕 passa content_filter)
             metrics = self.dashboard_analytics.get_date_range_data(
                 start_date=start_date,
                 end_date=end_date,
-                profile_filter=profile_filter
+                profile_filter=profile_filter,
+                content_filter=content_filter  # 🆕
             )
             
             # Gera HTML
@@ -1265,6 +1268,23 @@ class InstagramRAGApp:
                             
                             gr.Markdown("---")
                             
+                            # 🆕 FILTRO DE CONTEÚDO PARA SENTIMENTO
+                            gr.Markdown("**🎭 Análise de Sentimento**")
+                            
+                            sentiment_content_filter = gr.Radio(
+                                choices=[
+                                    ("📝 Legendas + Comentários", "both"),
+                                    ("🏷️ Apenas Legendas", "caption"),
+                                    ("💬 Apenas Comentários", "comments")
+                                ],
+                                value="both",
+                                label="Tipo de Conteúdo",
+                                interactive=True,
+                                info="Escolha qual conteúdo analisar"
+                            )
+                            
+                            gr.Markdown("---")
+                            
                             # Botão de atualizar
                             update_dashboard_btn = gr.Button(
                                 "🔄 Atualizar Dashboard",
@@ -1276,9 +1296,14 @@ class InstagramRAGApp:
                             gr.Markdown("""
                             ### 💡 Dica
                             
-                            Selecione o período e as fontes desejadas, 
+                            Selecione o período, fontes e tipo de conteúdo,
                             depois clique em **Atualizar Dashboard** 
                             para visualizar as métricas.
+                            
+                            **Tipos de Conteúdo:**
+                            - **Legendas + Comentários**: Análise completa
+                            - **Apenas Legendas**: Sentimento do autor
+                            - **Apenas Comentários**: Sentimento da comunidade
                             """)
                     
                     # Funções de atualização do dashboard
@@ -1292,12 +1317,13 @@ class InstagramRAGApp:
                         """Define período total."""
                         return "2000-01-01", datetime.now().strftime('%Y-%m-%d')
                     
-                    def update_dashboard(start: str, end: str, profiles: list):
+                    def update_dashboard(start: str, end: str, profiles: list, content_filter: str):
                         """Atualiza dashboard com filtros."""
                         return self.get_analytics_dashboard_html(
                             start_date=start if start else None,
                             end_date=end if end else None,
-                            profile_filter=profiles if profiles else None
+                            profile_filter=profiles if profiles else None,
+                            content_filter=content_filter  # 🆕 Passa filtro de conteúdo
                         )
                     
                     # Conecta botões de período rápido
@@ -1321,13 +1347,13 @@ class InstagramRAGApp:
                         outputs=[date_start, date_end]
                     )
                     
-                    # Conecta botão de atualizar
+                    # Conecta botão de atualizar (🆕 com content_filter)
                     update_dashboard_btn.click(
                         update_dashboard,
-                        inputs=[date_start, date_end, dashboard_profile_filter],
+                        inputs=[date_start, date_end, dashboard_profile_filter, sentiment_content_filter],
                         outputs=dashboard_display
                     )
-                
+
                 # ===== ABA 3: ESTATÍSTICAS (antiga) =====
                 with gr.TabItem("📈 Estatísticas"):
                     dashboard_html = gr.HTML(value=self.get_dashboard_html())
