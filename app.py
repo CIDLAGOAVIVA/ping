@@ -347,6 +347,74 @@ class InstagramRAGApp:
             </div>
             """
             
+            # ⭐ NOVA SEÇÃO: Análise de Hashtags
+            if data.get('hashtag_analysis') and data['hashtag_analysis'].get('total_unique', 0) > 0:
+                hashtag_data = data['hashtag_analysis']
+                html += f"""
+                <div style='border: 1px solid #4CAF50; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #f1f8f4;'>
+                    <h4 style='margin-top: 0; color: #4CAF50;'>🏷️ Análise de Hashtags</h4>
+                    <ul style='list-style-type: none; padding: 0;'>
+                        <li><strong>Total de hashtags únicas:</strong> {hashtag_data['total_unique']}</li>
+                        <li><strong>Total de ocorrências:</strong> {hashtag_data['total_occurrences']}</li>
+                        <li><strong>Média por post:</strong> {hashtag_data['avg_per_post']}</li>
+                    </ul>
+                    <h5>Top Hashtags:</h5>
+                    <div style='display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;'>
+                """
+                
+                for tag_data in hashtag_data['top_hashtags'][:5]:
+                    html += f"""
+                        <span style='
+                            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                            color: white;
+                            padding: 6px 12px;
+                            border-radius: 20px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                        '>
+                            #{tag_data['tag']} ({tag_data['count']} • {tag_data['percentage']}%)
+                        </span>
+                    """
+                
+                html += """
+                    </div>
+                </div>
+                """
+            
+            # ⭐ NOVA SEÇÃO: Análise de Menções
+            if data.get('mention_analysis') and data['mention_analysis'].get('total_unique', 0) > 0:
+                mention_data = data['mention_analysis']
+                html += f"""
+                <div style='border: 1px solid #2196F3; border-radius: 8px; padding: 15px; margin: 10px 0; background-color: #e3f2fd;'>
+                    <h4 style='margin-top: 0; color: #2196F3;'>👥 Análise de Menções</h4>
+                    <ul style='list-style-type: none; padding: 0;'>
+                        <li><strong>Total de menções únicas:</strong> {mention_data['total_unique']}</li>
+                        <li><strong>Total de ocorrências:</strong> {mention_data['total_occurrences']}</li>
+                        <li><strong>Média por post:</strong> {mention_data['avg_per_post']}</li>
+                    </ul>
+                    <h5>Top Menções:</h5>
+                    <div style='display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;'>
+                """
+                
+                for mention_data_item in mention_data['top_mentions'][:5]:
+                    html += f"""
+                        <span style='
+                            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+                            color: white;
+                            padding: 6px 12px;
+                            border-radius: 20px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                        '>
+                            {mention_data_item['username']} ({mention_data_item['count']} • {mention_data_item['percentage']}%)
+                        </span>
+                    """
+                
+                html += """
+                    </div>
+                </div>
+                """
+            
             # Distribuição de sentimentos (gráfico visual)
             total = data['positive_count'] + data['negative_count'] + data['neutral_count']
             pos_pct = (data['positive_count'] / total * 100) if total > 0 else 0
@@ -359,24 +427,27 @@ class InstagramRAGApp:
                 <div style='margin: 10px 0;'>
                     <div style='display: flex; align-items: center; margin: 5px 0;'>
                         <span style='width: 100px;'>✅ Positivo:</span>
-                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
-                            <div style='background: #4caf50; height: 100%; border-radius: 4px; width: {pos_pct}%;'></div>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; overflow: hidden;'>
+                            <div style='background: linear-gradient(to right, #4caf50, #45a049); width: {pos_pct}%; height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;'>
+                                <span style='color: white; font-weight: bold; font-size: 0.85rem;'>{data['positive_count']} ({pos_pct:.1f}%)</span>
+                            </div>
                         </div>
-                        <span style='width: 80px;'>{data['positive_count']} ({pos_pct:.1f}%)</span>
                     </div>
                     <div style='display: flex; align-items: center; margin: 5px 0;'>
                         <span style='width: 100px;'>❌ Negativo:</span>
-                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
-                            <div style='background: #f44336; height: 100%; border-radius: 4px; width: {neg_pct}%;'></div>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; overflow: hidden;'>
+                            <div style='background: linear-gradient(to right, #f44336, #d32f2f); width: {neg_pct}%; height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;'>
+                                <span style='color: white; font-weight: bold; font-size: 0.85rem;'>{data['negative_count']} ({neg_pct:.1f}%)</span>
+                            </div>
                         </div>
-                        <span style='width: 80px;'>{data['negative_count']} ({neg_pct:.1f}%)</span>
                     </div>
                     <div style='display: flex; align-items: center; margin: 5px 0;'>
                         <span style='width: 100px;'>⚪ Neutro:</span>
-                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 20px; margin: 0 10px;'>
-                            <div style='background: #9e9e9e; height: 100%; border-radius: 4px; width: {neu_pct}%;'></div>
+                        <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; overflow: hidden;'>
+                            <div style='background: linear-gradient(to right, #9e9e9e, #757575); width: {neu_pct}%; height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px;'>
+                                <span style='color: white; font-weight: bold; font-size: 0.85rem;'>{data['neutral_count']} ({neu_pct:.1f}%)</span>
+                            </div>
                         </div>
-                        <span style='width: 80px;'>{data['neutral_count']} ({neu_pct:.1f}%)</span>
                     </div>
                 </div>
             </div>
