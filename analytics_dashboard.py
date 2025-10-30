@@ -4,7 +4,7 @@ Processa dados de posts e notícias para visualização.
 """
 
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil import parser as date_parser
 from embedding_manager import EmbeddingManager
 from query_tools import QueryTools
@@ -18,6 +18,23 @@ class DashboardAnalytics:
         self.em = embedding_manager
         self.tools = QueryTools(embedding_manager)
         self.collection = embedding_manager.collection
+    
+    def _normalize_datetime(self, dt: datetime) -> datetime:
+        """
+        Normaliza datetime para ter timezone UTC.
+        
+        Args:
+            dt: Datetime a normalizar
+        
+        Returns:
+            Datetime com timezone UTC
+        """
+        if dt.tzinfo is None:
+            # Se não tem timezone, assume UTC
+            return dt.replace(tzinfo=timezone.utc)
+        else:
+            # Converte para UTC se tiver outro timezone
+            return dt.astimezone(timezone.utc)
     
     def get_date_range_data(
         self,
@@ -51,24 +68,38 @@ class DashboardAnalytics:
         if not results['ids']:
             return self._empty_metrics()
         
+        # Normaliza datas de filtro
+        start_filter = None
+        end_filter = None
+        
+        if start_date:
+            try:
+                start_filter = self._normalize_datetime(date_parser.parse(start_date))
+            except Exception as e:
+                print(f"⚠️ Erro ao parsear start_date '{start_date}': {e}")
+        
+        if end_date:
+            try:
+                end_filter = self._normalize_datetime(date_parser.parse(end_date))
+            except Exception as e:
+                print(f"⚠️ Erro ao parsear end_date '{end_date}': {e}")
+        
         # Filtra por data
         filtered_posts = []
         filtered_news = []
         
         for metadata in results['metadatas']:
             try:
+                # Parse e normaliza data do post
                 post_date = date_parser.parse(metadata['timestamp'])
+                post_date = self._normalize_datetime(post_date)
                 
                 # Aplica filtros de data
-                if start_date:
-                    start = date_parser.parse(start_date)
-                    if post_date < start:
-                        continue
+                if start_filter and post_date < start_filter:
+                    continue
                 
-                if end_date:
-                    end = date_parser.parse(end_date)
-                    if post_date > end:
-                        continue
+                if end_filter and post_date > end_filter:
+                    continue
                 
                 # Separa posts e notícias
                 if metadata.get('content_type') == 'news':
@@ -78,6 +109,8 @@ class DashboardAnalytics:
             
             except Exception as e:
                 print(f"⚠️ Erro ao processar metadata: {e}")
+                # Debug: mostra timestamp problemático
+                print(f"   Timestamp: {metadata.get('timestamp', 'N/A')}")
                 continue
         
         return self._calculate_metrics(filtered_posts, filtered_news)
@@ -132,8 +165,10 @@ class DashboardAnalytics:
         daily_posts = {}
         for post in posts:
             try:
-                post_date = date_parser.parse(post['timestamp']).date()
-                date_str = post_date.isoformat()
+                post_date = date_parser.parse(post['timestamp'])
+                post_date = self._normalize_datetime(post_date)
+                date_str = post_date.date().isoformat()
+                
                 if date_str not in daily_posts:
                     daily_posts[date_str] = {
                         'count': 0,
@@ -143,8 +178,8 @@ class DashboardAnalytics:
                 daily_posts[date_str]['count'] += 1
                 daily_posts[date_str]['likes'] += post.get('likesCount', 0)
                 daily_posts[date_str]['comments'] += post.get('commentsCount', 0)
-            except:
-                pass
+            except Exception as e:
+                print(f"⚠️ Erro ao processar data para análise temporal: {e}")
         
         # Análise de notícias
         news_publishers = {}
@@ -274,16 +309,34 @@ class DashboardAnalytics:
             include=['metadatas']
         )
         
+        # Normaliza datas de filtro
+        start_filter = None
+        end_filter = None
+        
+        if start_date:
+            try:
+                start_filter = self._normalize_datetime(date_parser.parse(start_date))
+            except:
+                pass
+        
+        if end_date:
+            try:
+                end_filter = self._normalize_datetime(date_parser.parse(end_date))
+            except:
+                pass
+        
         hashtag_count = {}
         
         for metadata in results['metadatas']:
             # Filtra por data se necessário
             try:
-                if start_date or end_date:
+                if start_filter or end_filter:
                     post_date = date_parser.parse(metadata['timestamp'])
-                    if start_date and post_date < date_parser.parse(start_date):
+                    post_date = self._normalize_datetime(post_date)
+                    
+                    if start_filter and post_date < start_filter:
                         continue
-                    if end_date and post_date > date_parser.parse(end_date):
+                    if end_filter and post_date > end_filter:
                         continue
             except:
                 pass
@@ -325,20 +378,7 @@ def main():
     )
     
     print(f"Total de registros: {metrics['summary']['total_records']}")
-    print(f"Posts: {metrics['posts']['total']}")
+    print(f"Registros: {metrics['posts']['total']}")
     print(f"Notícias: {metrics['news']['total']}")
     print(f"Engajamento total: {metrics['posts']['total_engagement']}")
-    print(f"Média de engajamento: {metrics['posts']['avg_engagement']}")
-    
-    print("\n📈 Top 3 posts por curtidas:")
-    for i, post in enumerate(metrics['posts']['top_by_likes'][:3], 1):
-        print(f"{i}. @{post['profile']}: {post['likes']} curtidas")
-    
-    print("\n#️⃣ Top 5 hashtags:")
-    topics = analytics.get_trending_topics(limit=5)
-    for i, topic in enumerate(topics, 1):
-        print(f"{i}. #{topic['topic']}: {topic['count']} menções")
-
-
-if __name__ == '__main__':
-    main()
+    print(f"Média de engajamento: {metrics['posts']['avg_engagement']}\n")
