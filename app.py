@@ -12,6 +12,8 @@ from typing import List, Tuple, Dict
 import json
 import os
 from pathlib import Path
+from analytics_dashboard import DashboardAnalytics
+from dashboard_visualizer import DashboardVisualizer
 
 
 class HistoryManager:
@@ -163,6 +165,10 @@ class InstagramRAGApp:
             print(f"📊 Perfis detectados: {self.stats['profiles']}")
         
         print(f"\n✓ Sistema pronto com {posts_count} posts indexados")
+        
+        # Inicializa dashboard analytics
+        self.dashboard_analytics = DashboardAnalytics(self.embedding_manager)
+        self.dashboard_visualizer = DashboardVisualizer()
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -666,6 +672,46 @@ class InstagramRAGApp:
         
         return response, sources_html
     
+    def get_analytics_dashboard_html(
+        self,
+        start_date: str = None,
+        end_date: str = None,
+        profile_filter: list = None
+    ) -> str:
+        """
+        Retorna HTML do dashboard de análise com filtros aplicados.
+        
+        Args:
+            start_date: Data inicial (YYYY-MM-DD)
+            end_date: Data final (YYYY-MM-DD)
+            profile_filter: Lista de perfis selecionados
+        
+        Returns:
+            HTML formatado
+        """
+        try:
+            # Converte perfis (remove @ se necessário)
+            if profile_filter:
+                profile_filter = [p.replace('@', '') for p in profile_filter]
+            
+            # Busca métricas
+            metrics = self.dashboard_analytics.get_date_range_data(
+                start_date=start_date,
+                end_date=end_date,
+                profile_filter=profile_filter
+            )
+            
+            # Gera HTML
+            return self.dashboard_visualizer.generate_dashboard_html(metrics)
+        
+        except Exception as e:
+            return f"""
+            <div style='padding: 2rem; text-align: center; color: var(--text-secondary);'>
+                <h3>❌ Erro ao carregar dashboard</h3>
+                <p>{str(e)}</p>
+            </div>
+            """
+    
     def get_dashboard_html(self) -> str:
         """
         Retorna HTML com dashboard de estatísticas profissional.
@@ -891,26 +937,20 @@ class InstagramRAGApp:
         return html
     
     def create_interface(self) -> gr.Blocks:
-        """
-        Cria interface Gradio profissional com abas navegáveis.
-        Tema claro como padrão com suporte total a dark mode.
+        """Cria interface Gradio com todas as abas incluindo novo Dashboard."""
         
-        Returns:
-            Interface Gradio configurada
-        """
         with gr.Blocks(
             title="PING - UFF ANALYTICS",
             theme=ping_theme
         ) as app:
             
-            # Header principal
-            gr.HTML(f"""
-            <div class="header-container">
-                <h1>🎓 PING - UFF ANALYTICS</h1>
+            gr.HTML("""
+            <div class="header-custom">
+                <h1 style="margin: 0 0 0.5rem 0;">📊 PING - UFF ANALYTICS</h1>
+                <p style="margin: 0;">Sistema de Análise Inteligente de Dados da UFF</p>
             </div>
             """)
             
-            # Interface com abas
             with gr.Tabs():
                 # ===== ABA 1: CHAT =====
                 with gr.TabItem("💬 Chat"):
@@ -1002,11 +1042,126 @@ class InstagramRAGApp:
                             mode_text = "🤖 Agente (LLM decide ferramentas)" if self.use_agent else "🔍 Clássico (Keywords)"
                             gr.Markdown(f"__{mode_text}__")
                 
-                # ===== ABA 2: ESTATÍSTICAS =====
-                with gr.TabItem("📊 Estatísticas"):
+                # ===== ABA 2: DASHBOARD DE ANÁLISE ===== ⭐ NOVO
+                with gr.TabItem("📊 Dashboard"):
+                    with gr.Row():
+                        with gr.Column(scale=9):
+                            dashboard_display = gr.HTML(value=self.get_analytics_dashboard_html())
+                        
+                        with gr.Column(scale=3, elem_classes="sidebar-config"):
+                            gr.Markdown("### 🎯 Filtros de Análise")
+                            
+                            # Filtro de período
+                            gr.Markdown("**📅 Período**")
+                            
+                            from datetime import datetime, timedelta
+                            today = datetime.now()
+                            default_start = (today - timedelta(days=30)).strftime('%Y-%m-%d')
+                            default_end = today.strftime('%Y-%m-%d')
+                            
+                            date_start = gr.Textbox(
+                                label="Data Inicial (YYYY-MM-DD)",
+                                value=default_start,
+                                placeholder="2024-01-01"
+                            )
+                            
+                            date_end = gr.Textbox(
+                                label="Data Final (YYYY-MM-DD)",
+                                value=default_end,
+                                placeholder="2024-12-31"
+                            )
+                            
+                            # Botões de período rápido
+                            gr.Markdown("**⚡ Períodos Rápidos**")
+                            
+                            with gr.Row():
+                                btn_7days = gr.Button("Últimos 7 dias", size="sm")
+                                btn_30days = gr.Button("Últimos 30 dias", size="sm")
+                            
+                            with gr.Row():
+                                btn_90days = gr.Button("Últimos 90 dias", size="sm")
+                                btn_all = gr.Button("Tudo", size="sm")
+                            
+                            gr.Markdown("---")
+                            
+                            # Filtro de perfis
+                            dashboard_profile_filter = gr.CheckboxGroup(
+                                choices=["@" + p for p in self.stats['profiles']],
+                                value=["@" + p for p in self.stats['profiles']],
+                                label="📊 Fontes",
+                                interactive=True
+                            )
+                            
+                            gr.Markdown("---")
+                            
+                            # Botão de atualizar
+                            update_dashboard_btn = gr.Button(
+                                "🔄 Atualizar Dashboard",
+                                variant="primary",
+                                size="lg"
+                            )
+                            
+                            gr.Markdown("---")
+                            gr.Markdown("""
+                            ### 💡 Dica
+                            
+                            Selecione o período e as fontes desejadas, 
+                            depois clique em **Atualizar Dashboard** 
+                            para visualizar as métricas.
+                            """)
+                    
+                    # Funções de atualização do dashboard
+                    def set_period(days: int):
+                        """Define período rápido."""
+                        end = datetime.now()
+                        start = end - timedelta(days=days)
+                        return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+                    
+                    def set_all_time():
+                        """Define período total."""
+                        return "2000-01-01", datetime.now().strftime('%Y-%m-%d')
+                    
+                    def update_dashboard(start: str, end: str, profiles: list):
+                        """Atualiza dashboard com filtros."""
+                        return self.get_analytics_dashboard_html(
+                            start_date=start if start else None,
+                            end_date=end if end else None,
+                            profile_filter=profiles if profiles else None
+                        )
+                    
+                    # Conecta botões de período rápido
+                    btn_7days.click(
+                        lambda: set_period(7),
+                        outputs=[date_start, date_end]
+                    )
+                    
+                    btn_30days.click(
+                        lambda: set_period(30),
+                        outputs=[date_start, date_end]
+                    )
+                    
+                    btn_90days.click(
+                        lambda: set_period(90),
+                        outputs=[date_start, date_end]
+                    )
+                    
+                    btn_all.click(
+                        set_all_time,
+                        outputs=[date_start, date_end]
+                    )
+                    
+                    # Conecta botão de atualizar
+                    update_dashboard_btn.click(
+                        update_dashboard,
+                        inputs=[date_start, date_end, dashboard_profile_filter],
+                        outputs=dashboard_display
+                    )
+                
+                # ===== ABA 3: ESTATÍSTICAS (antiga) =====
+                with gr.TabItem("📈 Estatísticas"):
                     dashboard_html = gr.HTML(value=self.get_dashboard_html())
                 
-                # ===== ABA 3: HISTÓRICO =====
+                # ===== ABA 4: HISTÓRICO =====
                 with gr.TabItem("📚 Histórico"):
                     with gr.Row():
                         with gr.Column(scale=8):
@@ -1041,7 +1196,7 @@ class InstagramRAGApp:
                                 outputs=history_html
                             )
                 
-                # ===== ABA 4: DOCUMENTAÇÃO =====
+                # ===== ABA 5: DOCUMENTAÇÃO =====
                 with gr.TabItem("📖 Documentação"):
                     gr.HTML(f"""
                     <div style='padding: 2rem;'>
