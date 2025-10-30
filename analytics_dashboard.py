@@ -62,7 +62,7 @@ class DashboardAnalytics:
         results = self.collection.get(
             where=where_clause if where_clause else None,
             limit=10000,
-            include=['metadatas']
+            include=['metadatas', 'documents']  # 🆕 Incluir documents para sentimento
         )
         
         if not results['ids']:
@@ -87,8 +87,9 @@ class DashboardAnalytics:
         # Filtra por data
         filtered_posts = []
         filtered_news = []
+        filtered_documents = []  # 🆕 Para análise de sentimento
         
-        for metadata in results['metadatas']:
+        for i, metadata in enumerate(results['metadatas']):
             try:
                 # Parse e normaliza data do post
                 post_date = date_parser.parse(metadata['timestamp'])
@@ -106,14 +107,124 @@ class DashboardAnalytics:
                     filtered_news.append(metadata)
                 else:
                     filtered_posts.append(metadata)
+                    # 🆕 Armazena documento para sentimento
+                    if i < len(results['documents']):
+                        filtered_documents.append({
+                            'text': results['documents'][i],
+                            'metadata': metadata
+                        })
             
             except Exception as e:
                 print(f"⚠️ Erro ao processar metadata: {e}")
-                # Debug: mostra timestamp problemático
                 print(f"   Timestamp: {metadata.get('timestamp', 'N/A')}")
                 continue
         
-        return self._calculate_metrics(filtered_posts, filtered_news)
+        # 🆕 Análise de sentimento nos dados filtrados
+        sentiment_data = self._analyze_sentiment_batch(
+            filtered_documents,
+            profile_filter
+        )
+        
+        metrics = self._calculate_metrics(filtered_posts, filtered_news)
+        
+        # 🆕 Adiciona sentimento às métricas
+        metrics['sentiment'] = sentiment_data
+        
+        return metrics
+    
+    def _analyze_sentiment_batch(
+        self,
+        documents: List[Dict[str, Any]],
+        profiles: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Analisa sentimento agregado de um conjunto de documentos.
+        
+        Args:
+            documents: Lista de dicts com 'text' e 'metadata'
+            profiles: Lista de perfis filtrados
+        
+        Returns:
+            Dict com análise de sentimento agregada
+        """
+        if not documents:
+            return {
+                'total_analyzed': 0,
+                'positive': 0,
+                'negative': 0,
+                'neutral': 0,
+                'positive_pct': 0,
+                'negative_pct': 0,
+                'neutral_pct': 0,
+                'trend': 'neutral',
+                'profiles': profiles or [],
+                'note': 'Nenhum registro para analisar'
+            }
+        
+        # Limita análise a 100 posts (performance)
+        sample_size = min(len(documents), 100)
+        sample_docs = documents[:sample_size]
+        
+        print(f"🎭 Analisando sentimento de {sample_size} registros...")
+        
+        # Análise simplificada por palavras-chave
+        # TODO: Usar LLM em batch para análise mais precisa
+        positive_keywords = [
+            'parabéns', 'excelente', 'ótimo', 'maravilhoso', 'sucesso',
+            'conquista', 'vitória', 'alegria', 'feliz', 'orgulho',
+            'gratidão', 'obrigado', 'apoio', 'solidariedade', 'esperança'
+        ]
+        
+        negative_keywords = [
+            'problema', 'crítica', 'péssimo', 'ruim', 'revolta',
+            'absurdo', 'inadmissível', 'vergonha', 'indignação', 'protesto',
+            'denúncia', 'descaso', 'abandono', 'precário', 'injustiça'
+        ]
+        
+        positive_count = 0
+        negative_count = 0
+        neutral_count = 0
+        
+        for doc in sample_docs:
+            text_lower = doc['text'].lower()
+            
+            pos_score = sum(1 for kw in positive_keywords if kw in text_lower)
+            neg_score = sum(1 for kw in negative_keywords if kw in text_lower)
+            
+            if pos_score > neg_score and pos_score > 0:
+                positive_count += 1
+            elif neg_score > pos_score and neg_score > 0:
+                negative_count += 1
+            else:
+                neutral_count += 1
+        
+        total = positive_count + negative_count + neutral_count
+        
+        # Calcula percentuais
+        pos_pct = (positive_count / total * 100) if total > 0 else 0
+        neg_pct = (negative_count / total * 100) if total > 0 else 0
+        neu_pct = (neutral_count / total * 100) if total > 0 else 0
+        
+        # Define tendência geral
+        if pos_pct > neg_pct and pos_pct > neu_pct:
+            trend = 'positive'
+        elif neg_pct > pos_pct and neg_pct > neu_pct:
+            trend = 'negative'
+        else:
+            trend = 'neutral'
+        
+        return {
+            'total_analyzed': sample_size,
+            'positive': positive_count,
+            'negative': negative_count,
+            'neutral': neutral_count,
+            'positive_pct': round(pos_pct, 1),
+            'negative_pct': round(neg_pct, 1),
+            'neutral_pct': round(neu_pct, 1),
+            'trend': trend,
+            'profiles': profiles or [],
+            'note': f'Análise baseada em amostra de {sample_size} registros'
+        }
     
     def _calculate_metrics(
         self,
@@ -259,6 +370,18 @@ class DashboardAnalytics:
                 'news_count': 0,
                 'total_engagement': 0,
                 'avg_engagement_per_post': 0
+            },
+            'sentiment': {  # 🆕
+                'total_analyzed': 0,
+                'positive': 0,
+                'negative': 0,
+                'neutral': 0,
+                'positive_pct': 0,
+                'negative_pct': 0,
+                'neutral_pct': 0,
+                'trend': 'neutral',
+                'profiles': [],
+                'note': 'Nenhum dado disponível'
             }
         }
     
@@ -269,18 +392,18 @@ class DashboardAnalytics:
         profile_filter: Optional[List[str]] = None
     ) -> Dict[str, int]:
         """
-        Analisa distribuição de sentimento (simulado por enquanto).
+        Analisa distribuição de sentimento (DEPRECATED - usar get_date_range_data).
         
-        TODO: Implementar análise de sentimento real em lote.
+        TODO: Remover em versão futura.
         """
-        # Por enquanto, retorna distribuição mockada
-        # Futuramente, pode usar analyze_sentiment em batch
-        return {
+        # Redireciona para novo método
+        metrics = self.get_date_range_data(start_date, end_date, profile_filter)
+        return metrics.get('sentiment', {
             'positive': 0,
             'negative': 0,
             'neutral': 0,
-            'note': 'Análise de sentimento em desenvolvimento'
-        }
+            'note': 'Use get_date_range_data para análise completa'
+        })
     
     def get_trending_topics(
         self,
@@ -381,4 +504,22 @@ def main():
     print(f"Registros: {metrics['posts']['total']}")
     print(f"Notícias: {metrics['news']['total']}")
     print(f"Engajamento total: {metrics['posts']['total_engagement']}")
-    print(f"Média de engajamento: {metrics['posts']['avg_engagement']}\n")
+    print(f"Média de engajamento: {metrics['posts']['avg_engagement']}")
+    
+    # 🆕 Teste de sentimento
+    print("\n🎭 Análise de Sentimento:")
+    sentiment = metrics.get('sentiment', {})
+    print(f"Total analisado: {sentiment.get('total_analyzed', 0)}")
+    print(f"✅ Positivo: {sentiment.get('positive', 0)} ({sentiment.get('positive_pct', 0)}%)")
+    print(f"❌ Negativo: {sentiment.get('negative', 0)} ({sentiment.get('negative_pct', 0)}%)")
+    print(f"⚪ Neutro: {sentiment.get('neutral', 0)} ({sentiment.get('neutral_pct', 0)}%)")
+    print(f"📊 Tendência: {sentiment.get('trend', 'N/A')}")
+    
+    print("\n#️⃣ Top 5 hashtags:")
+    topics = analytics.get_trending_topics(limit=5)
+    for i, topic in enumerate(topics, 1):
+        print(f"{i}. #{topic['topic']}: {topic['count']} menções")
+
+
+if __name__ == '__main__':
+    main()

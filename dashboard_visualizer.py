@@ -24,6 +24,7 @@ class DashboardVisualizer:
         summary = metrics.get('summary', {})
         posts_data = metrics.get('posts', {})
         news_data = metrics.get('news', {})
+        sentiment_data = metrics.get('sentiment', {})  # 🆕
         
         html = f"""
         <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
@@ -38,7 +39,10 @@ class DashboardVisualizer:
             </div>
             
             <!-- Cards Principais -->
-            {DashboardVisualizer._generate_summary_cards(summary, posts_data)}
+            {DashboardVisualizer._generate_summary_cards(summary, posts_data, sentiment_data)}
+            
+            <!-- Card de Sentimento (Destaque) -->
+            {DashboardVisualizer._generate_sentiment_card(sentiment_data)}
             
             <!-- Gráficos de Engajamento -->
             {DashboardVisualizer._generate_engagement_charts(posts_data)}
@@ -57,7 +61,7 @@ class DashboardVisualizer:
         return html
     
     @staticmethod
-    def _generate_summary_cards(summary: Dict, posts_data: Dict) -> str:
+    def _generate_summary_cards(summary: Dict, posts_data: Dict, sentiment_data: Dict) -> str:
         """Gera cards de resumo."""
         return f"""
         <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;'>
@@ -119,6 +123,145 @@ class DashboardVisualizer:
                 <p style='margin: 0.5rem 0 0 0; font-size: 0.85rem; opacity: 0.8;'>
                     Por post
                 </p>
+            </div>
+        </div>
+        """
+    
+    @staticmethod
+    def _generate_sentiment_card(sentiment_data: Dict) -> str:
+        """🆕 Gera card de análise de sentimento agregado."""
+        if not sentiment_data or sentiment_data.get('total_analyzed', 0) == 0:
+            return ""
+        
+        trend = sentiment_data.get('trend', 'neutral')
+        
+        # Define cor e emoji baseado na tendência
+        if trend == 'positive':
+            gradient = 'linear-gradient(135deg, #4caf50 0%, #66bb6a 100%)'
+            emoji = '😊'
+            trend_text = 'Positiva'
+            trend_color = '#4caf50'
+        elif trend == 'negative':
+            gradient = 'linear-gradient(135deg, #f44336 0%, #e57373 100%)'
+            emoji = '😟'
+            trend_text = 'Negativa'
+            trend_color = '#f44336'
+        else:
+            gradient = 'linear-gradient(135deg, #9e9e9e 0%, #bdbdbd 100%)'
+            emoji = '😐'
+            trend_text = 'Neutra'
+            trend_color = '#9e9e9e'
+        
+        pos_pct = sentiment_data.get('positive_pct', 0)
+        neg_pct = sentiment_data.get('negative_pct', 0)
+        neu_pct = sentiment_data.get('neutral_pct', 0)
+        
+        total = sentiment_data.get('total_analyzed', 0)
+        pos_count = sentiment_data.get('positive', 0)
+        neg_count = sentiment_data.get('negative', 0)
+        neu_count = sentiment_data.get('neutral', 0)
+        
+        profiles = sentiment_data.get('profiles', [])
+        profiles_text = ', '.join([f'@{p}' for p in profiles]) if profiles else 'Todas as fontes'
+        
+        return f"""
+        <div style='background: var(--bg-secondary); border-radius: 12px; padding: 2rem; margin-bottom: 2rem; border: 1px solid var(--border-primary);'>
+            <h3 style='margin: 0 0 1.5rem 0; color: var(--text-primary); display: flex; align-items: center; gap: 0.5rem;'>
+                🎭 Análise de Sentimento do Período
+                <span style='font-size: 0.75rem; font-weight: normal; background: {trend_color}; color: white; padding: 0.25rem 0.75rem; border-radius: 12px;'>
+                    {emoji} Tendência: {trend_text}
+                </span>
+            </h3>
+            
+            <!-- Card Principal de Tendência -->
+            <div style='
+                background: {gradient};
+                color: white;
+                padding: 2rem;
+                border-radius: 12px;
+                margin-bottom: 1.5rem;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                text-align: center;
+            '>
+                <div style='font-size: 4rem; margin-bottom: 1rem;'>{emoji}</div>
+                <h2 style='margin: 0 0 0.5rem 0; font-size: 2rem;'>Sentimento {trend_text}</h2>
+                <p style='margin: 0; font-size: 1rem; opacity: 0.9;'>
+                    Baseado em {total:,} registros analisados
+                </p>
+                <p style='margin: 0.5rem 0 0 0; font-size: 0.85rem; opacity: 0.8;'>
+                    📊 Fontes: {profiles_text}
+                </p>
+            </div>
+            
+            <!-- Gráficos de Barras por Sentimento -->
+            <div style='margin-bottom: 1.5rem;'>
+                <h4 style='margin: 0 0 1rem 0; color: var(--text-primary);'>📊 Distribuição Detalhada</h4>
+                
+                <!-- Barra Positiva -->
+                <div style='margin-bottom: 1rem;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-weight: 600; color: #4caf50;'>✅ Positivo</span>
+                        <span style='color: var(--text-secondary); font-size: 0.9rem;'>
+                            {pos_count} posts ({pos_pct}%)
+                        </span>
+                    </div>
+                    <div style='background: #e8f5e9; height: 24px; border-radius: 6px; overflow: hidden;'>
+                        <div style='
+                            background: #4caf50;
+                            height: 100%;
+                            width: {pos_pct}%;
+                            transition: width 0.5s ease;
+                        '></div>
+                    </div>
+                </div>
+                
+                <!-- Barra Negativa -->
+                <div style='margin-bottom: 1rem;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-weight: 600; color: #f44336;'>❌ Negativo</span>
+                        <span style='color: var(--text-secondary); font-size: 0.9rem;'>
+                            {neg_count} posts ({neg_pct}%)
+                        </span>
+                    </div>
+                    <div style='background: #ffebee; height: 24px; border-radius: 6px; overflow: hidden;'>
+                        <div style='
+                            background: #f44336;
+                            height: 100%;
+                            width: {neg_pct}%;
+                            transition: width 0.5s ease;
+                        '></div>
+                    </div>
+                </div>
+                
+                <!-- Barra Neutra -->
+                <div style='margin-bottom: 1rem;'>
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
+                        <span style='font-weight: 600; color: #9e9e9e;'>⚪ Neutro</span>
+                        <span style='color: var(--text-secondary); font-size: 0.9rem;'>
+                            {neu_count} posts ({neu_pct}%)
+                        </span>
+                    </div>
+                    <div style='background: #f5f5f5; height: 24px; border-radius: 6px; overflow: hidden;'>
+                        <div style='
+                            background: #9e9e9e;
+                            height: 100%;
+                            width: {neu_pct}%;
+                            transition: width 0.5s ease;
+                        '></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Nota Metodológica -->
+            <div style='
+                background: var(--bg-primary);
+                padding: 1rem;
+                border-radius: 8px;
+                border-left: 4px solid var(--primary);
+                font-size: 0.85rem;
+                color: var(--text-secondary);
+            '>
+                <strong>ℹ️ Metodologia:</strong> {sentiment_data.get('note', 'Análise de sentimento baseada em palavras-chave')}
             </div>
         </div>
         """
@@ -353,13 +496,25 @@ def main():
                 'O Globo': 15,
                 'Estadão': 10
             }
+        },
+        'sentiment': {  # 🆕 Mock de sentimento
+            'total_analyzed': 100,
+            'positive': 35,
+            'negative': 45,
+            'neutral': 20,
+            'positive_pct': 35.0,
+            'negative_pct': 45.0,
+            'neutral_pct': 20.0,
+            'trend': 'negative',
+            'profiles': ['dceuff', 'reitor'],
+            'note': 'Análise baseada em amostra de 100 registros'
         }
     }
     
     html = DashboardVisualizer.generate_dashboard_html(mock_metrics)
     
     # Salva para teste visual
-    with open('test_dashboard.html', 'w', encoding='utf-8') as f:
+    with open('test_dashboard_with_sentiment.html', 'w', encoding='utf-8') as f:
         f.write(f"""
         <!DOCTYPE html>
         <html>
@@ -384,7 +539,7 @@ def main():
         </html>
         """)
     
-    print("✅ HTML de teste gerado: test_dashboard.html")
+    print("✅ HTML de teste gerado: test_dashboard_with_sentiment.html")
 
 
 if __name__ == '__main__':
