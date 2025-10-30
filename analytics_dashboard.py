@@ -11,7 +11,7 @@ from query_tools import QueryTools
 from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
 import llm_chat
 import json
-
+from sentiment_cache import SentimentCache
 
 class DashboardAnalytics:
     """Gerenciador de análises para o dashboard."""
@@ -20,6 +20,7 @@ class DashboardAnalytics:
         self.em = embedding_manager
         self.tools = QueryTools(embedding_manager)
         self.collection = embedding_manager.collection
+        self.cache = SentimentCache()  # 🆕 Inicializa cache
     
     def _normalize_datetime(self, dt: datetime) -> datetime:
         """
@@ -38,37 +39,59 @@ class DashboardAnalytics:
             # Converte para UTC se tiver outro timezone
             return dt.astimezone(timezone.utc)
     
-    def get_date_range_data(
+    def get_sentiment_by_profile(
         self,
+        profile: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        profile_filter: Optional[List[str]] = None
+        limit: int = None,
+        use_llm: bool = True,
+        use_cache: bool = True,
+        content_filter: str = "both"  # 🆕 Filtro de conteúdo
     ) -> Dict[str, Any]:
         """
-        Retorna dados agregados para um período específico.
+        Analisa sentimento de um perfil específico.
         
         Args:
-            start_date: Data inicial (ISO format ou None para sem limite)
-            end_date: Data final (ISO format ou None para sem limite)
-            profile_filter: Lista de perfis para filtrar (ex: ["dceuff", "reitor"])
+            profile: Nome do perfil (@dceuff, @reitor, @vicereitor)
+            start_date: Data inicial (ISO format ou None)
+            end_date: Data final (ISO format ou None)
+            limit: Máximo de posts a analisar (None = todos)
+            use_llm: Se True, usa IA avançada; False = palavras-chave
+            use_cache: Se True, usa cache (padrão: True)
+            content_filter: Tipo de conteúdo a analisar:
+                - "both": Legenda + Comentários (padrão)
+                - "caption": Apenas legendas
+                - "comments": Apenas comentários
         
         Returns:
-            Dicionário com métricas agregadas
+            Dict com análise de sentimento do perfil
         """
-        # Busca todos os documentos
-        where_clause = {}
+        profile_clean = profile.replace('@', '').lower()
         
-        if profile_filter:
-            where_clause['profile'] = {'$in': profile_filter}
+        where_clause = {'profile': profile_clean}
         
         results = self.collection.get(
-            where=where_clause if where_clause else None,
-            limit=10000,
-            include=['metadatas', 'documents']  # 🆕 Incluir documents para sentimento
+            where=where_clause,
+            limit=100000,
+            include=['metadatas', 'documents']
         )
         
         if not results['ids']:
-            return self._empty_metrics()
+            return {
+                'profile': profile_clean,
+                'total_analyzed': 0,
+                'positive': 0,
+                'negative': 0,
+                'neutral': 0,
+                'positive_pct': 0,
+                'negative_pct': 0,
+                'neutral_pct': 0,
+                'trend': 'neutral',
+                'note': f'Nenhum registro encontrado para @{profile_clean}',
+                'cached': False,
+                'content_filter': content_filter
+            }
         
         # Normaliza datas de filtro
         start_filter = None
@@ -86,53 +109,139 @@ class DashboardAnalytics:
             except Exception as e:
                 print(f"⚠️ Erro ao parsear end_date '{end_date}': {e}")
         
-        # Filtra por data
-        filtered_posts = []
-        filtered_news = []
-        filtered_documents = []  # 🆕 Para análise de sentimento
+        # Filtra por data e coleta documentos
+        filtered_documents = []
         
         for i, metadata in enumerate(results['metadatas']):
             try:
-                # Parse e normaliza data do post
+                if metadata.get('content_type') == 'news':
+                    continue
+                
                 post_date = date_parser.parse(metadata['timestamp'])
                 post_date = self._normalize_datetime(post_date)
                 
-                # Aplica filtros de data
                 if start_filter and post_date < start_filter:
                     continue
                 
                 if end_filter and post_date > end_filter:
                     continue
                 
-                # Separa posts e notícias
-                if metadata.get('content_type') == 'news':
-                    filtered_news.append(metadata)
-                else:
-                    filtered_posts.append(metadata)
-                    # 🆕 Armazena documento para sentimento
-                    if i < len(results['documents']):
+                if i < len(results['documents']):
+                    # 🆕 Aplica filtro de conteúdo
+                    full_text = results['documents'][i]
+                    filtered_text = self._filter_content_by_type(full_text, metadata, content_filter)
+                    
+                    # Só adiciona se houver conteúdo após filtragem
+                    if filtered_text and filtered_text.strip():
                         filtered_documents.append({
-                            'text': results['documents'][i],
+                            'text': filtered_text,
                             'metadata': metadata
                         })
             
             except Exception as e:
                 print(f"⚠️ Erro ao processar metadata: {e}")
-                print(f"   Timestamp: {metadata.get('timestamp', 'N/A')}")
                 continue
         
-        # 🆕 Análise de sentimento nos dados filtrados
+        # Aplica limite apenas se especificado
+        if limit:
+            filtered_documents = filtered_documents[:limit]
+        
+        total_docs = len(filtered_documents)
+        
+        # 🆕 Verifica cache
+        if use_cache and use_llm:
+            cached_result = self.cache.get(
+                profile=profile_clean,
+                start_date=start_date,
+                end_date=end_date,
+                total_docs=total_docs,
+                content_filter=content_filter  # 🆕 Passa filtro para cache
+            )
+            
+            if cached_result:
+                cached_result['cached'] = True
+                cached_result['profile'] = profile_clean
+                cached_result['display_name'] = f"@{profile_clean}"
+                cached_result['content_filter'] = content_filter
+                return cached_result
+        
+        # Análise nova (cache miss ou desabilitado)
         sentiment_data = self._analyze_sentiment_batch(
             filtered_documents,
-            profile_filter
+            [profile_clean],
+            use_llm=use_llm
         )
         
-        metrics = self._calculate_metrics(filtered_posts, filtered_news)
+        sentiment_data['profile'] = profile_clean
+        sentiment_data['display_name'] = f"@{profile_clean}"
+        sentiment_data['cached'] = False
+        sentiment_data['content_filter'] = content_filter
         
-        # 🆕 Adiciona sentimento às métricas
-        metrics['sentiment'] = sentiment_data
+        # 🆕 Salva no cache
+        if use_cache and use_llm:
+            self.cache.set(
+                sentiment_data,
+                profile=profile_clean,
+                start_date=start_date,
+                end_date=end_date,
+                total_docs=total_docs,
+                content_filter=content_filter  # 🆕 Passa filtro para cache
+            )
         
-        return metrics
+        return sentiment_data
+    
+    def _filter_content_by_type(
+        self,
+        full_text: str,
+        metadata: Dict[str, Any],
+        content_filter: str
+    ) -> str:
+        """
+        🆕 Filtra conteúdo do post baseado no tipo selecionado.
+        
+        Args:
+            full_text: Texto completo do post (legenda + comentários)
+            metadata: Metadados do post
+            content_filter: Tipo de conteúdo ("both", "caption", "comments")
+        
+        Returns:
+            Texto filtrado conforme seleção
+        """
+        if content_filter == "both":
+            return full_text
+        
+        # Extrai apenas a legenda
+        if content_filter == "caption":
+            # Tenta pegar do metadata primeiro (mais confiável)
+            caption = metadata.get('caption', '')
+            if caption:
+                return f"Perfil: {metadata.get('profile', '')}\nData: {metadata.get('timestamp', '')}\n\nLegenda: {caption}"
+            
+            # Fallback: parse do texto completo
+            if "=== LEGENDA ===" in full_text and "=== COMENTÁRIOS ===" in full_text:
+                parts = full_text.split("=== COMENTÁRIOS ===")
+                return parts[0].strip()
+            elif "=== LEGENDA ===" in full_text:
+                return full_text.strip()
+            else:
+                return full_text
+        
+        # Extrai apenas os comentários
+        if content_filter == "comments":
+            # Tenta pegar do metadata primeiro
+            comments_text = metadata.get('comments_text', '')
+            if comments_text:
+                return f"Perfil: {metadata.get('profile', '')}\nData: {metadata.get('timestamp', '')}\n\nComentários:\n{comments_text}"
+            
+            # Fallback: parse do texto completo
+            if "=== COMENTÁRIOS ===" in full_text:
+                parts = full_text.split("=== COMENTÁRIOS ===")
+                if len(parts) > 1:
+                    return f"Comentários:\n{parts[1].strip()}"
+            
+            return ""  # Sem comentários
+        
+        return full_text  # Fallback
     
     def _analyze_sentiment_batch(
         self,
@@ -517,147 +626,43 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             }
         }
     
-    def get_sentiment_distribution(
+    def get_date_range_data(
         self,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        profile_filter: Optional[List[str]] = None
-    ) -> Dict[str, int]:
-        """
-        Analisa distribuição de sentimento (DEPRECATED - usar get_date_range_data).
-        
-        TODO: Remover em versão futura.
-        """
-        # Redireciona para novo método
-        metrics = self.get_date_range_data(start_date, end_date, profile_filter)
-        return metrics.get('sentiment', {
-            'positive': 0,
-            'negative': 0,
-            'neutral': 0,
-            'note': 'Use get_date_range_data para análise completa'
-        })
-    
-    def get_trending_topics(
-        self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Identifica tópicos mais mencionados no período.
-        
-        Args:
-            start_date: Data inicial
-            end_date: Data final
-            limit: Número máximo de tópicos
-        
-        Returns:
-            Lista de tópicos com contagem
-        """
-        # TODO: Implementar extração de tópicos via NLP
-        # Por enquanto, analisa hashtags mais usadas
-        
-        where_clause = {}
-        results = self.collection.get(
-            where=where_clause,
-            limit=10000,
-            include=['metadatas']
-        )
-        
-        # Normaliza datas de filtro
-        start_filter = None
-        end_filter = None
-        
-        if start_date:
-            try:
-                start_filter = self._normalize_datetime(date_parser.parse(start_date))
-            except:
-                pass
-        
-        if end_date:
-            try:
-                end_filter = self._normalize_datetime(date_parser.parse(end_date))
-            except:
-                pass
-        
-        hashtag_count = {}
-        
-        for metadata in results['metadatas']:
-            # Filtra por data se necessário
-            try:
-                if start_filter or end_filter:
-                    post_date = date_parser.parse(metadata['timestamp'])
-                    post_date = self._normalize_datetime(post_date)
-                    
-                    if start_filter and post_date < start_filter:
-                        continue
-                    if end_filter and post_date > end_filter:
-                        continue
-            except:
-                pass
-            
-            # Conta hashtags
-            hashtags = metadata.get('hashtags', [])
-            if isinstance(hashtags, list):
-                for tag in hashtags:
-                    hashtag_count[tag] = hashtag_count.get(tag, 0) + 1
-        
-        # Ordena e retorna top N
-        sorted_tags = sorted(
-            hashtag_count.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:limit]
-        
-        return [
-            {'topic': tag, 'count': count}
-            for tag, count in sorted_tags
-        ]
-    
-    def get_sentiment_by_profile(
-        self,
-        profile: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        limit: int = None,  # 🆕 None = sem limite (usa todos)
-        use_llm: bool = True  # 🆕 Usar LLM por padrão
+        profile_filter: Optional[List[str]] = None,
+        use_cache: bool = True,
+        content_filter: str = "both"  # 🆕 Filtro de conteúdo
     ) -> Dict[str, Any]:
         """
-        Analisa sentimento de um perfil específico.
+        Retorna dados agregados para um período específico.
         
         Args:
-            profile: Nome do perfil (@dceuff, @reitor, @vicereitor)
-            start_date: Data inicial (ISO format ou None)
-            end_date: Data final (ISO format ou None)
-            limit: Máximo de posts a analisar (None = todos)
-            use_llm: Se True, usa IA avançada; False = palavras-chave
+            start_date: Data inicial (ISO format ou None para sem limite)
+            end_date: Data final (ISO format ou None para sem limite)
+            profile_filter: Lista de perfis para filtrar (ex: ["dceuff", "reitor"])
+            use_cache: Se True, usa cache para sentimento (padrão: True)
+            content_filter: Tipo de conteúdo ("both", "caption", "comments")
         
         Returns:
-            Dict com análise de sentimento do perfil
+            Dicionário com métricas agregadas
         """
-        profile_clean = profile.replace('@', '').lower()
+        # Busca todos os documentos
+        where_clause = {}
         
-        where_clause = {'profile': profile_clean}
+        if profile_filter:
+            if len(profile_filter) == 1:
+                where_clause['profile'] = profile_filter[0]
+            # Se múltiplos perfis, não filtra (ChromaDB não suporta OR)
         
         results = self.collection.get(
-            where=where_clause,
-            limit=100000,  # 🆕 Busca tudo
+            where=where_clause if where_clause else None,
+            limit=10000,
             include=['metadatas', 'documents']
         )
         
         if not results['ids']:
-            return {
-                'profile': profile_clean,
-                'total_analyzed': 0,
-                'positive': 0,
-                'negative': 0,
-                'neutral': 0,
-                'positive_pct': 0,
-                'negative_pct': 0,
-                'neutral_pct': 0,
-                'trend': 'neutral',
-                'note': f'Nenhum registro encontrado para @{profile_clean}'
-            }
+            return self._empty_metrics()
         
         # Normaliza datas de filtro
         start_filter = None
@@ -675,48 +680,131 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             except Exception as e:
                 print(f"⚠️ Erro ao parsear end_date '{end_date}': {e}")
         
-        # Filtra por data e coleta documentos
-        filtered_documents = []
+        # Filtra por data
+        filtered_posts = []
+        filtered_news = []
+        filtered_documents = []  # 🆕 Para análise de sentimento
         
         for i, metadata in enumerate(results['metadatas']):
             try:
-                if metadata.get('content_type') == 'news':
-                    continue
-                
+                # Parse e normaliza data do post
                 post_date = date_parser.parse(metadata['timestamp'])
                 post_date = self._normalize_datetime(post_date)
                 
+                # Aplica filtros de data
                 if start_filter and post_date < start_filter:
                     continue
                 
                 if end_filter and post_date > end_filter:
                     continue
                 
-                if i < len(results['documents']):
-                    filtered_documents.append({
-                        'text': results['documents'][i],
-                        'metadata': metadata
-                    })
+                # Separa posts e notícias
+                if metadata.get('content_type') == 'news':
+                    filtered_news.append(metadata)
+                else:
+                    filtered_posts.append(metadata)
+                    # 🆕 Armazena documento para sentimento
+                    if i < len(results['documents']):
+                        filtered_documents.append({
+                            'text': results['documents'][i],
+                            'metadata': metadata
+                        })
             
             except Exception as e:
                 print(f"⚠️ Erro ao processar metadata: {e}")
+                print(f"   Timestamp: {metadata.get('timestamp', 'N/A')}")
                 continue
         
-        # 🆕 Aplica limite apenas se especificado
-        if limit:
-            filtered_documents = filtered_documents[:limit]
+        # 🆕 Aplica filtro de conteúdo aos documentos
+        filtered_documents_with_content = []
+        for doc in filtered_documents:
+            filtered_text = self._filter_content_by_type(
+                doc['text'],
+                doc['metadata'],
+                content_filter
+            )
+            if filtered_text and filtered_text.strip():
+                filtered_documents_with_content.append({
+                    'text': filtered_text,
+                    'metadata': doc['metadata']
+                })
         
-        # Analisa sentimento (com LLM ou keywords)
-        sentiment_data = self._analyze_sentiment_batch(
-            filtered_documents,
-            [profile_clean],
-            use_llm=use_llm  # 🆕 Passa modo de análise
-        )
+        # 🆕 Verifica cache de sentimento
+        if use_cache:
+            profile_key = profile_filter[0] if profile_filter and len(profile_filter) == 1 else None
+            
+            cached_sentiment = self.cache.get(
+                profile=profile_key,
+                start_date=start_date,
+                end_date=end_date,
+                total_docs=len(filtered_documents_with_content),
+                content_filter=content_filter  # 🆕 Passa filtro
+            )
+            
+            if cached_sentiment:
+                sentiment_data = cached_sentiment
+                sentiment_data['cached'] = True
+            else:
+                sentiment_data = self._analyze_sentiment_batch(
+                    filtered_documents_with_content,
+                    profile_filter
+                )
+                sentiment_data['cached'] = False
+                sentiment_data['content_filter'] = content_filter
+                
+                # Salva no cache
+                self.cache.set(
+                    sentiment_data,
+                    profile=profile_key,
+                    start_date=start_date,
+                    end_date=end_date,
+                    total_docs=len(filtered_documents_with_content),
+                    content_filter=content_filter  # 🆕 Passa filtro
+                )
+        else:
+            sentiment_data = self._analyze_sentiment_batch(
+                filtered_documents_with_content,
+                profile_filter
+            )
+            sentiment_data['cached'] = False
+            sentiment_data['content_filter'] = content_filter
         
-        sentiment_data['profile'] = profile_clean
-        sentiment_data['display_name'] = f"@{profile_clean}"
+        metrics = self._calculate_metrics(filtered_posts, filtered_news)
+        metrics['sentiment'] = sentiment_data
         
-        return sentiment_data
+        return metrics
+    
+    def invalidate_cache(
+        self,
+        profile: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ):
+        """
+        🆕 Invalida cache de sentimento.
+        Usar quando novos posts forem adicionados.
+        
+        Args:
+            profile: Perfil a invalidar (None = todos)
+            start_date: Data inicial
+            end_date: Data final
+        """
+        if profile:
+            self.cache.invalidate(profile, start_date, end_date)
+        else:
+            # Invalida todos os perfis
+            for prof in ['dceuff', 'reitor', 'vicereitor']:
+                self.cache.invalidate(prof, start_date, end_date)
+            self.cache.invalidate(None, start_date, end_date)  # Cache geral
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        🆕 Retorna estatísticas do cache.
+        
+        Returns:
+            Dict com estatísticas
+        """
+        return self.cache.get_stats()
 
 def main():
     """Função de teste."""

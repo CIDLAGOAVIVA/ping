@@ -940,7 +940,9 @@ class InstagramRAGApp:
         self,
         profile_filter: Optional[str] = None,
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
+        use_cache: bool = True,
+        content_filter: str = "both"  # 🆕 Filtro de conteúdo
     ) -> str:
         """
         Retorna HTML do card de análise de sentimento.
@@ -949,26 +951,34 @@ class InstagramRAGApp:
             profile_filter: Perfil específico para analisar (ex: "dceuff")
             start_date: Data inicial
             end_date: Data final
+            use_cache: Se True, usa cache (padrão: True)
+            content_filter: Tipo de conteúdo ("both", "caption", "comments")
         
         Returns:
             HTML formatado com análise de sentimento
         """
         from analytics_dashboard import DashboardAnalytics
         
-        analytics = DashboardAnalytics(self.agent.embedding_manager if self.use_agent else self.rag.embedding_manager)
+        analytics = DashboardAnalytics(
+            self.agent.embedding_manager if self.use_agent else self.rag.embedding_manager
+        )
         
         # Se tem filtro de perfil, usa método específico
         if profile_filter and profile_filter != "Todos":
             sentiment = analytics.get_sentiment_by_profile(
                 profile=profile_filter,
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                use_cache=use_cache,
+                content_filter=content_filter  # 🆕 Passa filtro
             )
         else:
             # Análise geral
             metrics = analytics.get_date_range_data(
                 start_date=start_date,
-                end_date=end_date
+                end_date=end_date,
+                use_cache=use_cache,
+                content_filter=content_filter  # 🆕 Passa filtro
             )
             sentiment = metrics.get('sentiment', {})
         
@@ -984,6 +994,18 @@ class InstagramRAGApp:
         
         trend = sentiment.get('trend', 'neutral')
         profile_name = sentiment.get('display_name', 'Todos os perfis')
+        
+        # 🆕 Status do cache
+        cached = sentiment.get('cached', False)
+        cache_icon = "💾" if cached else "🆕"
+        cache_text = "Dados do cache" if cached else "Análise nova"
+        
+        # 🆕 Tipo de conteúdo analisado
+        content_type_label = {
+            "both": "Legendas + Comentários",
+            "caption": "Apenas Legendas",
+            "comments": "Apenas Comentários"
+        }.get(content_filter, "Legendas + Comentários")
         
         # Emoji da tendência
         trend_emoji = {
@@ -1021,15 +1043,33 @@ class InstagramRAGApp:
                 '>{trend_emoji}</span>
             </div>
             
-            <p style='color: var(--text-secondary); margin: 0.5rem 0 1rem 0;'>
+            <p style='color: var(--text-secondary); margin: 0.5rem 0 0.5rem 0;'>
                 <strong>{profile_name}</strong> • {total} registros analisados
             </p>
+            
+            <!-- 🆕 Tipo de conteúdo -->
+            <p style='color: var(--text-secondary); margin: 0 0 1rem 0; font-size: 0.9rem;'>
+                📝 <strong>Analisando:</strong> {content_type_label}
+            </p>
+            
+            <!-- Status do cache -->
+            <div style='
+                background: {'#e8f5e9' if cached else '#fff3e0'};
+                border-left: 4px solid {'#4caf50' if cached else '#ff9800'};
+                padding: 0.5rem 1rem;
+                margin: 0.5rem 0 1rem 0;
+                border-radius: 4px;
+            '>
+                <span style='color: var(--text-secondary); font-size: 0.9rem;'>
+                    {cache_icon} <strong>{cache_text}</strong>
+                </span>
+            </div>
             
             <!-- Barras de progresso -->
             <div style='margin: 1rem 0;'>
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>✅ Positivo:</span>
-                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #4caf50; height: 100%; width: {pos_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{positive} ({pos_pct}%)</span>
@@ -1037,7 +1077,7 @@ class InstagramRAGApp:
                 
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>❌ Negativo:</span>
-                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #f44336; height: 100%; width: {neg_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{negative} ({neg_pct}%)</span>
@@ -1055,7 +1095,7 @@ class InstagramRAGApp:
             <p style='
                 margin: 1rem 0 0 0;
                 padding: 0.8rem;
-                background: var(--bg-tertiary);
+                background: var(--bg-terciary);
                 border-radius: 8px;
                 color: var(--text-secondary);
                 font-size: 0.85rem;

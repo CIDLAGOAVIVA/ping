@@ -5,37 +5,29 @@ Script para reindexar o banco vetorial incluindo notícias.
 
 from data_loader import InstagramDataLoader
 from embedding_manager import EmbeddingManager
+from sentiment_cache import SentimentCache
 import sys
 
 
 def main():
     """Reindexar posts e notícias."""
     print("=" * 60)
-    print("  🔄 REINDEXAÇÃO COM NOTÍCIAS")
+    print("  🔄 REINDEXAÇÃO DO BANCO VETORIAL")
     print("=" * 60)
     print()
     
-    # Confirma
-    print("⚠️  ATENÇÃO: Este script vai APAGAR o banco vetorial atual e reindexar tudo.")
-    print("    Isso inclui:")
-    print("    - Todos os posts do Instagram (dceuff, reitor, vicereitor)")
-    print("    - Todas as notícias sobre Roberto Salles (_smoking_gun.json)")
-    print()
-    
-    resposta = input("Deseja continuar? (sim/não): ").strip().lower()
-    
-    if resposta not in ['sim', 's', 'yes', 'y']:
-        print("❌ Operação cancelada.")
-        sys.exit(0)
-    
-    print()
-    print("🔧 Inicializando componentes...")
-    
-    # Inicializa
+    # Inicializa componentes
+    print("🛠️  Inicializando componentes...")
     loader = InstagramDataLoader()
     em = EmbeddingManager()
-    
     print("✓ Componentes inicializados")
+    print()
+    
+    # 🆕 Limpa cache de sentimento
+    print("🗑️  Limpando cache de análise de sentimento...")
+    cache = SentimentCache()
+    cache.clear_all()
+    print("✓ Cache limpo")
     print()
     
     # Limpa coleção atual

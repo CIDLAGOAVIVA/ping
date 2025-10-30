@@ -332,10 +332,10 @@ class InstagramDataLoader:
             comments_text = '\n'.join(comments_list)
         
         # 🆕 Texto completo: legenda + comentários
-        full_text = f"Perfil: {profile}\nData: {post.get('timestamp', '')}\nLegenda: {caption}\nHashtags: {hashtags}"
+        full_text = f"Perfil: {profile}\nData: {post.get('timestamp', '')}\n\n=== LEGENDA ===\n{caption}\nHashtags: {hashtags}"
         
         if comments_text:
-            full_text += f"\n\nComentários dos usuários:\n{comments_text}"
+            full_text += f"\n\n=== COMENTÁRIOS ===\n{comments_text}"
         
         return {
             'text': full_text,
@@ -344,10 +344,10 @@ class InstagramDataLoader:
             'timestamp': post.get('timestamp', ''),
             'likesCount': post.get('likesCount', 0),
             'commentsCount': post.get('commentsCount', 0),
-            'caption': caption,
+            'caption': caption,  # 🆕 Armazena separadamente
             'hashtags': hashtags,
             'mentions': mentions,
-            'comments_text': comments_text,  # 🆕 Armazena comentários separados
+            'comments_text': comments_text,  # 🆕 Armazena separadamente
             'content_type': 'instagram_post'
         }
 
