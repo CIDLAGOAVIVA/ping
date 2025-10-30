@@ -8,7 +8,7 @@ from agent_system import RAGAgent
 from rag_system import RAGSystem
 from ping_theme import ping_theme
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 import json
 import os
 from pathlib import Path
@@ -1181,6 +1181,65 @@ class InstagramRAGApp:
         
         return html
 
+    def export_dashboard_report(
+        self,
+        format: str,
+        start_date: str = None,
+        end_date: str = None,
+        profile_filter: list = None,
+        content_filter: str = "both"
+    ) -> Tuple[str, Any]:
+        """
+        🆕 Exporta relatório do dashboard.
+        
+        Args:
+            format: Formato ('csv' ou 'pdf')
+            start_date: Data inicial
+            end_date: Data final
+            profile_filter: Lista de perfis
+            content_filter: Tipo de conteúdo
+        
+        Returns:
+            Tuple (filepath, content)
+        """
+        try:
+            # Limpa perfis
+            if profile_filter:
+                profile_filter = [p.replace('@', '') for p in profile_filter]
+            
+            # Busca métricas
+            metrics = self.analytics.get_date_range_data(
+                start_date=start_date,
+                end_date=end_date,
+                profile_filter=profile_filter,
+                use_llm_sentiment=False,  # Usa cache
+                use_cache=True,
+                content_filter=content_filter
+            )
+            
+            # Exporta
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"relatorio_uff_{timestamp}.{format}"
+            
+            content = self.analytics.export_report(metrics, format, filename)
+            
+            # Salva arquivo temporário
+            filepath = f"/tmp/{filename}"
+            if format == 'csv':
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(content)
+            else:  # PDF
+                with open(filepath, 'wb') as f:
+                    f.write(content)
+            
+            return filepath, content
+        
+        except Exception as e:
+            print(f"❌ Erro ao exportar relatório: {e}")
+            import traceback
+            traceback.print_exc()
+            return None, None
+    
     def create_interface(self) -> gr.Blocks:
         """Cria interface Gradio com todas as abas incluindo novo Dashboard."""
         
@@ -1364,6 +1423,39 @@ class InstagramRAGApp:
                             )
                             
                             gr.Markdown("---")
+                            
+                            # 🆕 SEÇÃO DE EXPORTAÇÃO
+                            gr.Markdown("### 📥 Exportar Relatório")
+                            
+                            export_format = gr.Radio(
+                                choices=[
+                                    ("📄 CSV (Excel)", "csv"),
+                                    ("📕 PDF (Documento)", "pdf")
+                                ],
+                                value="csv",
+                                label="Formato",
+                                interactive=True
+                            )
+                            
+                            export_btn = gr.Button(
+                                "📥 Baixar Relatório",
+                                variant="secondary",
+                                size="lg"
+                            )
+                            
+                            export_status = gr.Textbox(
+                                label="Status",
+                                interactive=False,
+                                visible=False
+                            )
+                            
+                            export_file = gr.File(
+                                label="Arquivo Gerado",
+                                visible=False
+                            )
+                            
+                            gr.Markdown("---")
+                            
                             gr.Markdown("""
                             ### 💡 Dica
                             
@@ -1375,6 +1467,10 @@ class InstagramRAGApp:
                             - **Legendas + Comentários**: Análise completa
                             - **Apenas Legendas**: Sentimento do autor
                             - **Apenas Comentários**: Sentimento da comunidade
+                            
+                            **Exportação:**
+                            Escolha CSV ou PDF e clique em **Baixar Relatório**
+                            para gerar um arquivo com todas as métricas.
                             """)
                     
                     # Funções de atualização do dashboard
@@ -1394,8 +1490,31 @@ class InstagramRAGApp:
                             start_date=start if start else None,
                             end_date=end if end else None,
                             profile_filter=profiles if profiles else None,
-                            content_filter=content_filter  # 🆕 Passa filtro de conteúdo
+                            content_filter=content_filter
                         )
+                    
+                    # 🆕 Função de exportação
+                    def handle_export(fmt, start, end, profiles, content_filter):
+                        """Processa exportação de relatório."""
+                        filepath, content = self.export_dashboard_report(
+                            format=fmt,
+                            start_date=start if start else None,
+                            end_date=end if end else None,
+                            profile_filter=profiles if profiles else None,
+                            content_filter=content_filter
+                        )
+                        
+                        if filepath:
+                            filename = filepath.split('/')[-1]
+                            return (
+                                gr.update(value=f"✅ Relatório gerado: {filename}", visible=True),
+                                gr.update(value=filepath, visible=True)
+                            )
+                        else:
+                            return (
+                                gr.update(value="❌ Erro ao gerar relatório", visible=True),
+                                gr.update(visible=False)
+                            )
                     
                     # Conecta botões de período rápido
                     btn_7days.click(
@@ -1418,11 +1537,24 @@ class InstagramRAGApp:
                         outputs=[date_start, date_end]
                     )
                     
-                    # Conecta botão de atualizar (🆕 com content_filter)
+                    # Conecta botão de atualizar
                     update_dashboard_btn.click(
                         update_dashboard,
                         inputs=[date_start, date_end, dashboard_profile_filter, sentiment_content_filter],
                         outputs=dashboard_display
+                    )
+                    
+                    # 🆕 Conecta botão de exportação
+                    export_btn.click(
+                        fn=handle_export,
+                        inputs=[
+                            export_format,
+                            date_start,
+                            date_end,
+                            dashboard_profile_filter,
+                            sentiment_content_filter
+                        ],
+                        outputs=[export_status, export_file]
                     )
 
                 # ===== ABA 3: ESTATÍSTICAS (antiga) =====
@@ -1483,7 +1615,7 @@ class InstagramRAGApp:
                         
                         <div style='background: #f1f8f4; border-left: 4px solid #4caf50; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
                             <h3 style='margin-top: 0; color: #4caf50;'>💚 Dicas</h3>
-                            <ul>
+                                                       <ul>
                                 <li>Use linguagem natural - não precisa ser exato</li>
                                 <li>Combine filtros de perfil com perguntas para resultados mais específicos</li>
                                 <li>Verifique o histórico para rever respostas anteriores</li>

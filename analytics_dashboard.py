@@ -12,6 +12,7 @@ from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
 import llm_chat
 import json
 from sentiment_cache import SentimentCache
+from report_exporter import ReportExporter
 
 class DashboardAnalytics:
     """Gerenciador de análises para o dashboard."""
@@ -21,6 +22,7 @@ class DashboardAnalytics:
         self.tools = QueryTools(embedding_manager)
         self.collection = embedding_manager.collection
         self.cache = SentimentCache()  # 🆕 Inicializa cache
+        self.exporter = ReportExporter()  # 🆕 Exportador
     
     def _normalize_datetime(self, dt: datetime) -> datetime:
         """
@@ -960,6 +962,31 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             diagnosis['samples'].append(sample)
         
         return diagnosis
+
+    def export_report(
+        self,
+        metrics: Dict[str, Any],
+        format: str = 'csv',
+        filename: Optional[str] = None
+    ) -> Any:
+        """
+        🆕 Exporta relatório em CSV ou PDF.
+        
+        Args:
+            metrics: Métricas do dashboard
+            format: Formato ('csv' ou 'pdf')
+            filename: Nome do arquivo (opcional)
+        
+        Returns:
+            String (CSV) ou bytes (PDF)
+        """
+        if format.lower() == 'csv':
+            return self.exporter.export_to_csv(metrics, filename)
+        elif format.lower() == 'pdf':
+            return self.exporter.export_to_pdf(metrics, filename)
+        else:
+            raise ValueError(f"Formato inválido: {format}. Use 'csv' ou 'pdf'.")
+    
 
 def main():
     """Função de teste."""
