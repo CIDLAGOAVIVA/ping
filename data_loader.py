@@ -306,6 +306,50 @@ class InstagramDataLoader:
                 stats[profile]['date_range']['newest'] = post_date
         
         return stats
+    
+    def _process_instagram_post(self, post: Dict, profile: str) -> Dict[str, Any]:
+        """
+        Processa um post do Instagram.
+        
+        Args:
+            post: Dados do post
+            profile: Nome do perfil
+            
+        Returns:
+            Dicionário com dados processados
+        """
+        # Extrai dados principais
+        caption = post.get('caption', '')
+        hashtags = ' '.join(post.get('hashtags', []))
+        mentions = ' '.join(post.get('mentions', []))
+        
+        # 🆕 Extrai comentários se disponíveis
+        comments = post.get('comments', [])
+        comments_text = ''
+        if comments:
+            # Concatena texto de todos os comentários
+            comments_list = [c.get('text', '') for c in comments if isinstance(c, dict) and c.get('text')]
+            comments_text = '\n'.join(comments_list)
+        
+        # 🆕 Texto completo: legenda + comentários
+        full_text = f"Perfil: {profile}\nData: {post.get('timestamp', '')}\nLegenda: {caption}\nHashtags: {hashtags}"
+        
+        if comments_text:
+            full_text += f"\n\nComentários dos usuários:\n{comments_text}"
+        
+        return {
+            'text': full_text,
+            'profile': profile,
+            'url': post.get('url', ''),
+            'timestamp': post.get('timestamp', ''),
+            'likesCount': post.get('likesCount', 0),
+            'commentsCount': post.get('commentsCount', 0),
+            'caption': caption,
+            'hashtags': hashtags,
+            'mentions': mentions,
+            'comments_text': comments_text,  # 🆕 Armazena comentários separados
+            'content_type': 'instagram_post'
+        }
 
 
 def main():

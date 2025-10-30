@@ -8,7 +8,7 @@ from agent_system import RAGAgent
 from rag_system import RAGSystem
 from ping_theme import ping_theme
 from datetime import datetime
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 import json
 import os
 from pathlib import Path
@@ -936,6 +936,137 @@ class InstagramRAGApp:
         """
         return html
     
+    def get_sentiment_card_html(
+        self,
+        profile_filter: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> str:
+        """
+        Retorna HTML do card de análise de sentimento.
+        
+        Args:
+            profile_filter: Perfil específico para analisar (ex: "dceuff")
+            start_date: Data inicial
+            end_date: Data final
+        
+        Returns:
+            HTML formatado com análise de sentimento
+        """
+        from analytics_dashboard import DashboardAnalytics
+        
+        analytics = DashboardAnalytics(self.agent.embedding_manager if self.use_agent else self.rag.embedding_manager)
+        
+        # Se tem filtro de perfil, usa método específico
+        if profile_filter and profile_filter != "Todos":
+            sentiment = analytics.get_sentiment_by_profile(
+                profile=profile_filter,
+                start_date=start_date,
+                end_date=end_date
+            )
+        else:
+            # Análise geral
+            metrics = analytics.get_date_range_data(
+                start_date=start_date,
+                end_date=end_date
+            )
+            sentiment = metrics.get('sentiment', {})
+        
+        # Dados do sentimento
+        total = sentiment.get('total_analyzed', 0)
+        positive = sentiment.get('positive', 0)
+        negative = sentiment.get('negative', 0)
+        neutral = sentiment.get('neutral', 0)
+        
+        pos_pct = sentiment.get('positive_pct', 0)
+        neg_pct = sentiment.get('negative_pct', 0)
+        neu_pct = sentiment.get('neutral_pct', 0)
+        
+        trend = sentiment.get('trend', 'neutral')
+        profile_name = sentiment.get('display_name', 'Todos os perfis')
+        
+        # Emoji da tendência
+        trend_emoji = {
+            'positive': '😊',
+            'negative': '😟',
+            'neutral': '😐'
+        }.get(trend, '😐')
+        
+        # Cor da tendência
+        trend_color = {
+            'positive': '#4caf50',
+            'negative': '#f44336',
+            'neutral': '#9e9e9e'
+        }.get(trend, '#9e9e9e')
+        
+        html = f"""
+        <div style='
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--border-primary);
+            margin-bottom: 1.5rem;
+        '>
+            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;'>
+                <h3 style='margin: 0; color: var(--text-primary);'>🎭 Análise de Sentimento</h3>
+                <span style='
+                    font-size: 2rem;
+                    background: {trend_color};
+                    width: 50px;
+                    height: 50px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                '>{trend_emoji}</span>
+            </div>
+            
+            <p style='color: var(--text-secondary); margin: 0.5rem 0 1rem 0;'>
+                <strong>{profile_name}</strong> • {total} registros analisados
+            </p>
+            
+            <!-- Barras de progresso -->
+            <div style='margin: 1rem 0;'>
+                <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
+                    <span style='width: 100px; color: var(--text-primary);'>✅ Positivo:</span>
+                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                        <div style='background: #4caf50; height: 100%; width: {pos_pct}%; transition: width 0.3s ease;'></div>
+                    </div>
+                    <span style='width: 100px; text-align: right; color: var(--text-primary);'>{positive} ({pos_pct}%)</span>
+                </div>
+                
+                <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
+                    <span style='width: 100px; color: var(--text-primary);'>❌ Negativo:</span>
+                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                        <div style='background: #f44336; height: 100%; width: {neg_pct}%; transition: width 0.3s ease;'></div>
+                    </div>
+                    <span style='width: 100px; text-align: right; color: var(--text-primary);'>{negative} ({neg_pct}%)</span>
+                </div>
+                
+                <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
+                    <span style='width: 100px; color: var(--text-primary);'>⚪ Neutro:</span>
+                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                        <div style='background: #9e9e9e; height: 100%; width: {neu_pct}%; transition: width 0.3s ease;'></div>
+                    </div>
+                    <span style='width: 100px; text-align: right; color: var(--text-primary);'>{neutral} ({neu_pct}%)</span>
+                </div>
+            </div>
+            
+            <p style='
+                margin: 1rem 0 0 0;
+                padding: 0.8rem;
+                background: var(--bg-tertiary);
+                border-radius: 8px;
+                color: var(--text-secondary);
+                font-size: 0.85rem;
+            '>
+                💡 {sentiment.get('note', 'Análise baseada em palavras-chave')}
+            </p>
+        </div>
+        """
+        
+        return html
+
     def create_interface(self) -> gr.Blocks:
         """Cria interface Gradio com todas as abas incluindo novo Dashboard."""
         

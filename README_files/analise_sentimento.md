@@ -1,0 +1,1 @@
+Atualmente a analise de sentimento esta sendo feito por palavras negativas e positivas, porem isso pode ser melhorado utilizando modelos de linguagem treinados especificamente para analise de sentimento.

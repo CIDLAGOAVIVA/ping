@@ -481,7 +481,111 @@ class DashboardAnalytics:
             {'topic': tag, 'count': count}
             for tag, count in sorted_tags
         ]
-
+    
+    def get_sentiment_by_profile(
+        self,
+        profile: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Analisa sentimento de um perfil específico.
+        
+        Args:
+            profile: Nome do perfil (@dceuff, @reitor, @vicereitor)
+            start_date: Data inicial (ISO format ou None)
+            end_date: Data final (ISO format ou None)
+            limit: Máximo de posts a analisar (padrão: 100)
+        
+        Returns:
+            Dict com análise de sentimento do perfil
+        """
+        # Limpa @ do perfil se presente
+        profile_clean = profile.replace('@', '').lower()
+        
+        # Busca documentos do perfil
+        where_clause = {'profile': profile_clean}
+        
+        # Evita buscar notícias (content_type)
+        results = self.collection.get(
+            where=where_clause,
+            limit=10000,
+            include=['metadatas', 'documents']
+        )
+        
+        if not results['ids']:
+            return {
+                'profile': profile_clean,
+                'total_analyzed': 0,
+                'positive': 0,
+                'negative': 0,
+                'neutral': 0,
+                'positive_pct': 0,
+                'negative_pct': 0,
+                'neutral_pct': 0,
+                'trend': 'neutral',
+                'note': f'Nenhum registro encontrado para @{profile_clean}'
+            }
+        
+        # Normaliza datas de filtro
+        start_filter = None
+        end_filter = None
+        
+        if start_date:
+            try:
+                start_filter = self._normalize_datetime(date_parser.parse(start_date))
+            except Exception as e:
+                print(f"⚠️ Erro ao parsear start_date '{start_date}': {e}")
+        
+        if end_date:
+            try:
+                end_filter = self._normalize_datetime(date_parser.parse(end_date))
+            except Exception as e:
+                print(f"⚠️ Erro ao parsear end_date '{end_date}': {e}")
+        
+        # Filtra por data e coleta documentos
+        filtered_documents = []
+        
+        for i, metadata in enumerate(results['metadatas']):
+            try:
+                # Pula notícias
+                if metadata.get('content_type') == 'news':
+                    continue
+                
+                # Parse e normaliza data
+                post_date = date_parser.parse(metadata['timestamp'])
+                post_date = self._normalize_datetime(post_date)
+                
+                # Aplica filtros de data
+                if start_filter and post_date < start_filter:
+                    continue
+                
+                if end_filter and post_date > end_filter:
+                    continue
+                
+                # Adiciona documento
+                if i < len(results['documents']):
+                    filtered_documents.append({
+                        'text': results['documents'][i],
+                        'metadata': metadata
+                    })
+            
+            except Exception as e:
+                print(f"⚠️ Erro ao processar metadata: {e}")
+                continue
+        
+        # Analisa sentimento
+        sentiment_data = self._analyze_sentiment_batch(
+            filtered_documents[:limit],
+            [profile_clean]
+        )
+        
+        # Adiciona informações do perfil
+        sentiment_data['profile'] = profile_clean
+        sentiment_data['display_name'] = f"@{profile_clean}"
+        
+        return sentiment_data
 
 def main():
     """Função de teste."""
