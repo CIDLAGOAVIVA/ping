@@ -210,6 +210,12 @@ class DashboardAnalytics:
         if content_filter == "both":
             return full_text
         
+        # 🔍 DEBUG: Vamos ver o que temos
+        print(f"\n🔍 DEBUG _filter_content_by_type:")
+        print(f"   content_filter: {content_filter}")
+        print(f"   metadata keys: {metadata.keys()}")
+        print(f"   full_text preview: {full_text[:200]}...")
+        
         # Extrai apenas a legenda
         if content_filter == "caption":
             # Tenta pegar do metadata primeiro (mais confiável)
@@ -224,6 +230,7 @@ class DashboardAnalytics:
             elif "=== LEGENDA ===" in full_text:
                 return full_text.strip()
             else:
+                # Se não tem marcadores, considera tudo como legenda
                 return full_text
         
         # Extrai apenas os comentários
@@ -231,14 +238,26 @@ class DashboardAnalytics:
             # Tenta pegar do metadata primeiro
             comments_text = metadata.get('comments_text', '')
             if comments_text:
+                print(f"   ✅ Found comments_text in metadata: {len(comments_text)} chars")
                 return f"Perfil: {metadata.get('profile', '')}\nData: {metadata.get('timestamp', '')}\n\nComentários:\n{comments_text}"
             
             # Fallback: parse do texto completo
             if "=== COMENTÁRIOS ===" in full_text:
                 parts = full_text.split("=== COMENTÁRIOS ===")
                 if len(parts) > 1:
-                    return f"Comentários:\n{parts[1].strip()}"
+                    comments = parts[1].strip()
+                    print(f"   ✅ Parsed comments from text: {len(comments)} chars")
+                    return f"Comentários:\n{comments}"
             
+            # 🆕 Tenta outro formato comum
+            if "\n\n---\n\nComentários:" in full_text:
+                parts = full_text.split("\n\n---\n\nComentários:")
+                if len(parts) > 1:
+                    comments = parts[1].strip()
+                    print(f"   ✅ Parsed comments (alt format): {len(comments)} chars")
+                    return f"Comentários:\n{comments}"
+            
+            print(f"   ⚠️ NO COMMENTS FOUND - returning empty")
             return ""  # Sem comentários
         
         return full_text  # Fallback
@@ -805,6 +824,66 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             Dict com estatísticas
         """
         return self.cache.get_stats()
+    
+    def diagnose_content_structure(self, limit: int = 5) -> Dict[str, Any]:
+        """
+        🔬 Diagnóstico: Verifica como os dados estão estruturados.
+        
+        Args:
+            limit: Número de documentos a verificar
+        
+        Returns:
+            Dicionário com informações de diagnóstico
+        """
+        results = self.collection.get(
+            limit=limit,
+            include=['documents', 'metadatas']
+        )
+        
+        diagnosis = {
+            'total_checked': len(results['ids']),
+            'samples': [],
+            'formats_found': {
+                'has_caption_key': 0,
+                'has_comments_text_key': 0,
+                'has_legenda_marker': 0,
+                'has_comentarios_marker': 0,
+                'has_alt_format': 0
+            }
+        }
+        
+        for i, (doc, meta) in enumerate(zip(results['documents'], results['metadatas'])):
+            sample = {
+                'index': i,
+                'profile': meta.get('profile', 'unknown'),
+                'has_caption_key': 'caption' in meta,
+                'has_comments_text_key': 'comments_text' in meta,
+                'doc_preview': doc[:300] + "..." if len(doc) > 300 else doc,
+                'metadata_keys': list(meta.keys())
+            }
+            
+            # Verifica formatos no documento
+            if '=== LEGENDA ===' in doc:
+                diagnosis['formats_found']['has_legenda_marker'] += 1
+                sample['has_legenda_marker'] = True
+            
+            if '=== COMENTÁRIOS ===' in doc:
+                diagnosis['formats_found']['has_comentarios_marker'] += 1
+                sample['has_comentarios_marker'] = True
+            
+            if '\n\n---\n\nComentários:' in doc:
+                diagnosis['formats_found']['has_alt_format'] += 1
+                sample['has_alt_format'] = True
+            
+            if 'caption' in meta:
+                diagnosis['formats_found']['has_caption_key'] += 1
+            
+            if 'comments_text' in meta:
+                diagnosis['formats_found']['has_comments_text_key'] += 1
+            
+            diagnosis['samples'].append(sample)
+        
+        return diagnosis
 
 def main():
     """Função de teste."""
