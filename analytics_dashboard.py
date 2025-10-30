@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from dateutil import parser as date_parser
 from embedding_manager import EmbeddingManager
 from query_tools import QueryTools
+from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
+import llm_chat
 import json
 
 
@@ -135,7 +137,8 @@ class DashboardAnalytics:
     def _analyze_sentiment_batch(
         self,
         documents: List[Dict[str, Any]],
-        profiles: Optional[List[str]] = None
+        profiles: Optional[List[str]] = None,
+        use_llm: bool = True  # 🆕 Usar LLM por padrão
     ) -> Dict[str, Any]:
         """
         Analisa sentimento agregado de um conjunto de documentos.
@@ -143,6 +146,7 @@ class DashboardAnalytics:
         Args:
             documents: Lista de dicts com 'text' e 'metadata'
             profiles: Lista de perfis filtrados
+            use_llm: Se True, usa LLM para análise mais precisa (padrão: True)
         
         Returns:
             Dict com análise de sentimento agregada
@@ -161,31 +165,162 @@ class DashboardAnalytics:
                 'note': 'Nenhum registro para analisar'
             }
         
-        # Limita análise a 100 posts (performance)
-        sample_size = min(len(documents), 100)
-        sample_docs = documents[:sample_size]
+        total_docs = len(documents)
+        print(f"🎭 Analisando sentimento de {total_docs} registros...")
         
-        print(f"🎭 Analisando sentimento de {sample_size} registros...")
+        # 🆕 ANÁLISE COM LLM (mais precisa)
+        if use_llm:
+            return self._analyze_sentiment_with_llm(documents, profiles)
         
-        # Análise simplificada por palavras-chave
-        # TODO: Usar LLM em batch para análise mais precisa
+        # 🔧 FALLBACK: Análise por palavras-chave (mais rápida)
+        return self._analyze_sentiment_with_keywords(documents, profiles)
+    
+    def _analyze_sentiment_with_llm(
+        self,
+        documents: List[Dict[str, Any]],
+        profiles: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        🆕 Análise de sentimento usando LLM em batch.
+        
+        Processa todos os documentos em lotes para análise precisa.
+        """
+        total_docs = len(documents)
+        batch_size = 50  # Processa 50 posts por vez
+        
+        positive_count = 0
+        negative_count = 0
+        neutral_count = 0
+        
+        # Processa em batches
+        for i in range(0, total_docs, batch_size):
+            batch = documents[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (total_docs + batch_size - 1) // batch_size
+            
+            print(f"   📦 Processando lote {batch_num}/{total_batches} ({len(batch)} posts)...")
+            
+            # Prepara texto do batch
+            batch_text = "\n\n---POST---\n\n".join([
+                f"POST {j+1}:\n{doc['text'][:800]}"  # Limita cada post a 800 chars
+                for j, doc in enumerate(batch)
+            ])
+            
+            # Prompt para análise em batch
+            prompt = f"""Analise o sentimento de cada um dos {len(batch)} posts abaixo.
+
+INSTRUÇÕES:
+- Classifique cada post como: POSITIVO, NEGATIVO ou NEUTRO
+- Considere tanto a legenda quanto os comentários dos usuários
+- Analise o tom geral da conversa
+- Se houver divergência entre legenda e comentários, priorize o sentimento dominante
+
+POSTS:
+{batch_text}
+
+Retorne APENAS um JSON com o formato:
+{{
+    "sentiments": ["POSITIVO", "NEGATIVO", "NEUTRO", ...],
+    "reasoning": "Breve explicação da análise geral"
+}}
+
+A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada post."""
+
+            try:
+                # Usa provider configurado (DeepSeek ou Ollama)
+                if DEFAULT_PROVIDER == 'deepseek':
+                    model = DEEPSEEK_MODEL
+                else:
+                    model = "qwen3:30b"
+                
+                response = llm_chat.chat(
+                    model=model,
+                    messages=[{'role': 'user', 'content': prompt}]
+                )
+                
+                response_text = response['message']['content']
+                
+                # Parse JSON
+                if '```json' in response_text:
+                    response_text = response_text.split('```json')[1].split('```')[0]
+                elif '```' in response_text:
+                    response_text = response_text.split('```')[1].split('```')[0]
+                
+                result = json.loads(response_text.strip())
+                sentiments = result.get('sentiments', [])
+                
+                # Conta sentimentos
+                for s in sentiments:
+                    s_upper = s.upper()
+                    if 'POSITIV' in s_upper:
+                        positive_count += 1
+                    elif 'NEGATIV' in s_upper:
+                        negative_count += 1
+                    else:
+                        neutral_count += 1
+                
+                print(f"      ✓ Lote analisado com sucesso")
+            
+            except Exception as e:
+                print(f"      ⚠️ Erro no lote {batch_num}: {e}")
+                # Fallback: marca todos como neutros
+                neutral_count += len(batch)
+        
+        # Calcula percentuais
+        total = positive_count + negative_count + neutral_count
+        pos_pct = (positive_count / total * 100) if total > 0 else 0
+        neg_pct = (negative_count / total * 100) if total > 0 else 0
+        neu_pct = (neutral_count / total * 100) if total > 0 else 0
+        
+        # Define tendência
+        if pos_pct > neg_pct and pos_pct > neu_pct:
+            trend = 'positive'
+        elif neg_pct > pos_pct and neg_pct > neu_pct:
+            trend = 'negative'
+        else:
+            trend = 'neutral'
+        
+        return {
+            'total_analyzed': total_docs,
+            'positive': positive_count,
+            'negative': negative_count,
+            'neutral': neutral_count,
+            'positive_pct': round(pos_pct, 1),
+            'negative_pct': round(neg_pct, 1),
+            'neutral_pct': round(neu_pct, 1),
+            'trend': trend,
+            'profiles': profiles or [],
+            'note': f'Análise usando IA (modelo: {DEFAULT_PROVIDER.upper()}) - {total_docs} registros completos'
+        }
+    
+    def _analyze_sentiment_with_keywords(
+        self,
+        documents: List[Dict[str, Any]],
+        profiles: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        🔧 FALLBACK: Análise simplificada por palavras-chave.
+        Usado quando LLM não está disponível ou para análises rápidas.
+        """
         positive_keywords = [
             'parabéns', 'excelente', 'ótimo', 'maravilhoso', 'sucesso',
             'conquista', 'vitória', 'alegria', 'feliz', 'orgulho',
-            'gratidão', 'obrigado', 'apoio', 'solidariedade', 'esperança'
+            'gratidão', 'obrigado', 'apoio', 'solidariedade', 'esperança',
+            'incrível', 'fantástico', 'perfeito', 'adorei', 'amei'
         ]
         
         negative_keywords = [
             'problema', 'crítica', 'péssimo', 'ruim', 'revolta',
             'absurdo', 'inadmissível', 'vergonha', 'indignação', 'protesto',
-            'denúncia', 'descaso', 'abandono', 'precário', 'injustiça'
+            'denúncia', 'descaso', 'abandono', 'precário', 'injustiça',
+            'horrível', 'terrível', 'lamentável', 'triste', 'decepção'
         ]
         
         positive_count = 0
         negative_count = 0
         neutral_count = 0
         
-        for doc in sample_docs:
+        for doc in documents:
             text_lower = doc['text'].lower()
             
             pos_score = sum(1 for kw in positive_keywords if kw in text_lower)
@@ -198,14 +333,11 @@ class DashboardAnalytics:
             else:
                 neutral_count += 1
         
-        total = positive_count + negative_count + neutral_count
-        
-        # Calcula percentuais
+        total = len(documents)
         pos_pct = (positive_count / total * 100) if total > 0 else 0
         neg_pct = (negative_count / total * 100) if total > 0 else 0
         neu_pct = (neutral_count / total * 100) if total > 0 else 0
         
-        # Define tendência geral
         if pos_pct > neg_pct and pos_pct > neu_pct:
             trend = 'positive'
         elif neg_pct > pos_pct and neg_pct > neu_pct:
@@ -214,7 +346,7 @@ class DashboardAnalytics:
             trend = 'neutral'
         
         return {
-            'total_analyzed': sample_size,
+            'total_analyzed': total,
             'positive': positive_count,
             'negative': negative_count,
             'neutral': neutral_count,
@@ -223,7 +355,7 @@ class DashboardAnalytics:
             'neutral_pct': round(neu_pct, 1),
             'trend': trend,
             'profiles': profiles or [],
-            'note': f'Análise baseada em amostra de {sample_size} registros'
+            'note': f'Análise rápida por palavras-chave - {total} registros'
         }
     
     def _calculate_metrics(
@@ -487,7 +619,8 @@ class DashboardAnalytics:
         profile: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 100
+        limit: int = None,  # 🆕 None = sem limite (usa todos)
+        use_llm: bool = True  # 🆕 Usar LLM por padrão
     ) -> Dict[str, Any]:
         """
         Analisa sentimento de um perfil específico.
@@ -496,21 +629,19 @@ class DashboardAnalytics:
             profile: Nome do perfil (@dceuff, @reitor, @vicereitor)
             start_date: Data inicial (ISO format ou None)
             end_date: Data final (ISO format ou None)
-            limit: Máximo de posts a analisar (padrão: 100)
+            limit: Máximo de posts a analisar (None = todos)
+            use_llm: Se True, usa IA avançada; False = palavras-chave
         
         Returns:
             Dict com análise de sentimento do perfil
         """
-        # Limpa @ do perfil se presente
         profile_clean = profile.replace('@', '').lower()
         
-        # Busca documentos do perfil
         where_clause = {'profile': profile_clean}
         
-        # Evita buscar notícias (content_type)
         results = self.collection.get(
             where=where_clause,
-            limit=10000,
+            limit=100000,  # 🆕 Busca tudo
             include=['metadatas', 'documents']
         )
         
@@ -549,22 +680,18 @@ class DashboardAnalytics:
         
         for i, metadata in enumerate(results['metadatas']):
             try:
-                # Pula notícias
                 if metadata.get('content_type') == 'news':
                     continue
                 
-                # Parse e normaliza data
                 post_date = date_parser.parse(metadata['timestamp'])
                 post_date = self._normalize_datetime(post_date)
                 
-                # Aplica filtros de data
                 if start_filter and post_date < start_filter:
                     continue
                 
                 if end_filter and post_date > end_filter:
                     continue
                 
-                # Adiciona documento
                 if i < len(results['documents']):
                     filtered_documents.append({
                         'text': results['documents'][i],
@@ -575,13 +702,17 @@ class DashboardAnalytics:
                 print(f"⚠️ Erro ao processar metadata: {e}")
                 continue
         
-        # Analisa sentimento
+        # 🆕 Aplica limite apenas se especificado
+        if limit:
+            filtered_documents = filtered_documents[:limit]
+        
+        # Analisa sentimento (com LLM ou keywords)
         sentiment_data = self._analyze_sentiment_batch(
-            filtered_documents[:limit],
-            [profile_clean]
+            filtered_documents,
+            [profile_clean],
+            use_llm=use_llm  # 🆕 Passa modo de análise
         )
         
-        # Adiciona informações do perfil
         sentiment_data['profile'] = profile_clean
         sentiment_data['display_name'] = f"@{profile_clean}"
         

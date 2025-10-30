@@ -1045,7 +1045,7 @@ class InstagramRAGApp:
                 
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>⚪ Neutro:</span>
-                    <div style='flex: 1; background: var(--bg-tertiary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #9e9e9e; height: 100%; width: {neu_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{neutral} ({neu_pct}%)</span>
