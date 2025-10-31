@@ -1143,6 +1143,8 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             if not results['ids']:
                 return {
                     'recommendations': [],
+                    'critical_areas': [],
+                    'positive_aspects': [],
                     'sentiment_analysis': {'positive': 0, 'neutral': 0, 'negative': 0},
                     'top_topics': [],
                     'engagement_trends': {},
@@ -1214,7 +1216,7 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             # 🤖 GERAÇÃO INTELIGENTE DE RECOMENDAÇÕES COM LLM
             # Em vez de usar contagem de termos, usa IA para analisar o conteúdo completo
             print(f"🤖 Gerando recomendações inteligentes com LLM...")
-            recommendations = self._generate_recommendations_with_llm(
+            llm_result = self._generate_recommendations_with_llm(
                 posts_data=posts_data,
                 sentiment=sentiment,
                 engagement_trends=engagement_trends,
@@ -1222,7 +1224,9 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             )
             
             return {
-                'recommendations': recommendations,
+                'recommendations': llm_result.get('recommendations', []),
+                'critical_areas': llm_result.get('critical_areas', []),
+                'positive_aspects': llm_result.get('positive_aspects', []),
                 'sentiment_analysis': sentiment,
                 'top_topics': [],  # Removido análise de termos
                 'engagement_trends': engagement_trends
@@ -1234,6 +1238,8 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             traceback.print_exc()
             return {
                 'recommendations': [],
+                'critical_areas': [],
+                'positive_aspects': [],
                 'sentiment_analysis': {'positive': 0, 'neutral': 0, 'negative': 0},
                 'top_topics': [],
                 'engagement_trends': {},
@@ -1246,7 +1252,7 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         sentiment: Dict[str, Any],
         engagement_trends: Dict[str, Any],
         top_n: int = 5
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         🤖 Gera recomendações de políticas usando LLM para análise inteligente.
         
@@ -1260,7 +1266,7 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             top_n: Número de recomendações a gerar
         
         Returns:
-            Lista de recomendações estruturadas
+            Dict com 'recommendations', 'critical_areas' e 'positive_aspects'
         """
         try:
             # Prepara amostra representativa do conteúdo
@@ -1294,16 +1300,34 @@ AMOSTRA DO CONTEÚDO (legendas e comentários reais):
 {content_summary}
 
 TAREFA:
-Baseado na análise COMPLETA do conteúdo acima (não apenas em palavras-chave), gere {top_n} recomendações de políticas públicas universitárias.
+Baseado na análise COMPLETA do conteúdo acima (não apenas em palavras-chave), gere:
+
+1. **ÁREAS PROBLEMÁTICAS**: Identifique 3-5 áreas que aparecem como críticas ou problemáticas nos comentários/legendas
+   - Classifique a frequência (alta/média/baixa) baseado na recorrência
+   - Extraia 2-3 exemplos REAIS de trechos do conteúdo que demonstram o problema
+
+2. **RECOMENDAÇÕES**: Gere {top_n} recomendações de políticas públicas universitárias
+   - Priorize ações baseadas nos problemas identificados
+   - Seja ESPECÍFICO e baseado no CONTEÚDO REAL analisado
+   - Não use recomendações genéricas
+
+3. **ASPECTOS POSITIVOS**: Liste 2-4 aspectos positivos encontrados no conteúdo (se houver)
 
 Considere:
-1. Temas recorrentes nas conversas (não apenas termos frequentes)
-2. Preocupações e demandas dos estudantes e comunidade
-3. Sentimento geral e específico sobre tópicos
-4. Contexto universitário público brasileiro
+- Temas recorrentes nas conversas (não apenas termos frequentes)
+- Preocupações e demandas dos estudantes e comunidade
+- Sentimento geral e específico sobre tópicos
+- Contexto universitário público brasileiro
 
 FORMATO DA RESPOSTA (JSON):
 {{
+  "critical_areas": [
+    {{
+      "area": "Nome da área problemática",
+      "frequency": "alta|média|baixa",
+      "examples": ["Exemplo 1 de comentário/post", "Exemplo 2 de comentário/post"]
+    }}
+  ],
   "recommendations": [
     {{
       "priority": "alta|média|baixa",
@@ -1314,7 +1338,8 @@ FORMATO DA RESPOSTA (JSON):
       "responsible": "Responsável pela implementação",
       "reasoning": "Justificativa baseada no conteúdo analisado"
     }}
-  ]
+  ],
+  "positive_aspects": ["Aspecto positivo 1", "Aspecto positivo 2"]
 }}
 
 IMPORTANTE:
@@ -1349,10 +1374,18 @@ IMPORTANTE:
             
             result = json.loads(response_text.strip())
             recommendations = result.get('recommendations', [])
+            critical_areas = result.get('critical_areas', [])
+            positive_aspects = result.get('positive_aspects', [])
             
             print(f"   ✅ {len(recommendations)} recomendações geradas com sucesso!")
+            print(f"   ✅ {len(critical_areas)} áreas críticas identificadas!")
+            print(f"   ✅ {len(positive_aspects)} aspectos positivos encontrados!")
             
-            return recommendations[:top_n]
+            return {
+                'recommendations': recommendations[:top_n],
+                'critical_areas': critical_areas,
+                'positive_aspects': positive_aspects
+            }
         
         except Exception as e:
             print(f"   ❌ Erro ao gerar recomendações com LLM: {e}")
@@ -1360,15 +1393,19 @@ IMPORTANTE:
             traceback.print_exc()
             
             # Fallback: recomendação genérica
-            return [{
-                'priority': 'média',
-                'area': 'Análise de Dados',
-                'action': 'Revisar dados e tentar novamente',
-                'expected_impact': 'Geração de recomendações mais precisas',
-                'implementation_time': 'imediato',
-                'responsible': 'Equipe Técnica',
-                'reasoning': f'Erro na análise automática: {str(e)}'
-            }]
+            return {
+                'recommendations': [{
+                    'priority': 'média',
+                    'area': 'Análise de Dados',
+                    'action': 'Revisar dados e tentar novamente',
+                    'expected_impact': 'Geração de recomendações mais precisas',
+                    'implementation_time': 'imediato',
+                    'responsible': 'Equipe Técnica',
+                    'reasoning': f'Erro na análise automática: {str(e)}'
+                }],
+                'critical_areas': [],
+                'positive_aspects': []
+            }
     
     def get_trending_topics(self, limit: int = 10) -> List[Dict[str, Any]]:
         """

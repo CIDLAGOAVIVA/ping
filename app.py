@@ -1295,9 +1295,9 @@ class InstagramRAGApp:
                         'content_filter': content_filter,
                         'sentiment_data': sentiment_data,
                         'summary': f"Análise baseada em {len(recommendations.get('recommendations', []))} recomendações geradas automaticamente.",
-                        'critical_areas': [],  # Pode ser preenchido futuramente
+                        'critical_areas': recommendations.get('critical_areas', []),
                         'recommendations': recommendations.get('recommendations', []),
-                        'positive_aspects': [],  # Pode ser preenchido futuramente
+                        'positive_aspects': recommendations.get('positive_aspects', []),
                         'general_observations': f"Sentimento: {sentiment_data.get('positive_pct', 0):.1f}% positivo, {sentiment_data.get('negative_pct', 0):.1f}% negativo"
                     }
                     

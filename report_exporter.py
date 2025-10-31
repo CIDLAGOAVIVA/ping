@@ -380,33 +380,89 @@ class ReportExporter:
             elements.append(Paragraph(summary_text, styles['Normal']))
             elements.append(Spacer(1, 0.2*inch))
             
-            # Áreas Críticas
+            # Áreas Críticas - FORMATO DE CARDS
             elements.append(Paragraph("Áreas Problemáticas Identificadas", styles['Heading3']))
+            elements.append(Spacer(1, 0.2*inch))
             
-            areas_data = [['Área', 'Frequência', 'Exemplos']]
-            for area in recommendations.get('critical_areas', []):
-                examples = ' | '.join(area.get('examples', [])[:2])
-                areas_data.append([
-                    area.get('area', ''),
-                    area.get('frequency', '').upper(),
-                    examples[:100]
-                ])
+            # Estilo para cards de áreas problemáticas
+            problem_card_style = ParagraphStyle(
+                'ProblemCardStyle',
+                parent=styles['Normal'],
+                fontSize=10,
+                leading=14,
+                spaceAfter=6,
+                leftIndent=10,
+                rightIndent=10
+            )
             
-            areas_table = Table(areas_data, colWidths=[1.5*inch, 1*inch, 3*inch])
-            areas_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f44336')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ffcdd2')),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
+            problem_card_title_style = ParagraphStyle(
+                'ProblemCardTitle',
+                parent=styles['Heading3'],
+                fontSize=12,
+                textColor=colors.HexColor('#f44336'),
+                spaceAfter=8,
+                spaceBefore=0
+            )
             
-            elements.append(areas_table)
-            elements.append(Spacer(1, 0.3*inch))
+            # Itera sobre cada área problemática criando um card
+            for i, area in enumerate(recommendations.get('critical_areas', []), 1):
+                area_name = area.get('area', 'N/A')
+                frequency = area.get('frequency', 'N/A').upper()
+                examples = area.get('examples', [])
+                
+                # Define cor da frequência
+                if frequency == 'ALTA':
+                    freq_color = colors.HexColor('#d32f2f')
+                    bg_color = colors.HexColor('#ffebee')
+                elif frequency == 'MÉDIA':
+                    freq_color = colors.HexColor('#f57c00')
+                    bg_color = colors.HexColor('#fff3e0')
+                else:
+                    freq_color = colors.HexColor('#1976d2')
+                    bg_color = colors.HexColor('#e3f2fd')
+                
+                # Card header
+                card_header = f"""
+                <para align="center">
+                    <b><font size="11" color="{freq_color.hexval()}">
+                    ⚠️ ÁREA PROBLEMÁTICA {i} - FREQUÊNCIA {frequency}
+                    </font></b>
+                </para>
+                """
+                
+                # Card content
+                card_content = f"""
+                <b>Área Identificada:</b><br/>
+                {area_name}<br/>
+                <br/>
+                <b>Exemplos Observados:</b><br/>
+                """
+                
+                # Adiciona exemplos como bullets
+                for j, example in enumerate(examples[:3], 1):
+                    card_content += f"• {example}<br/>"
+                
+                # Adiciona elementos do card
+                elements.append(Paragraph(card_header, problem_card_title_style))
+                
+                # Cria card com borda e fundo colorido
+                card_data = [[Paragraph(card_content, problem_card_style)]]
+                card_table = Table(card_data, colWidths=[6.5*inch])
+                card_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), bg_color),
+                    ('BORDER', (0, 0), (-1, -1), 2, freq_color),
+                    ('TOPPADDING', (0, 0), (-1, -1), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 15),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                
+                elements.append(card_table)
+                elements.append(Spacer(1, 0.25*inch))
+            
+            # Espaço após áreas problemáticas
+            elements.append(Spacer(1, 0.2*inch))
             
             # 🆕 Recomendações em CARDS (texto corrido, mais legível)
             elements.append(PageBreak())
