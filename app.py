@@ -1638,19 +1638,26 @@ class InstagramRAGApp:
                     ):
                         """Gera recomendações baseadas em análise de sentimento."""
                         try:
+                            print("\n🔮 Gerando recomendações de políticas...")
                             profile = profiles[0] if profiles and len(profiles) == 1 else None
                             
                             recommendations = self.analytics.generate_policy_recommendations(
-                                profile=profile,
-                                content_filter=sent_filter,
-                                use_cache=True
+                                profile_filter=profile,
+                                min_engagement=100,
+                                top_n=5
                             )
                             
-                            if not recommendations.get('has_recommendations', False):
+                            # 🔍 DEBUG
+                            print(f"🔍 DEBUG recommendations: {recommendations}")
+                            print(f"   Tem 'recommendations' key? {('recommendations' in recommendations)}")
+                            if 'recommendations' in recommendations:
+                                print(f"   Quantidade: {len(recommendations['recommendations'])}")
+                            
+                            if not recommendations or not recommendations.get('recommendations') or len(recommendations.get('recommendations', [])) == 0:
                                 return f"""
                                 <div style='padding: 2rem; text-align: center;'>
                                     <h3>⚠️ Sem Recomendações</h3>
-                                    <p>{recommendations.get('message', 'Dados insuficientes.')}</p>
+                                    <p>Dados insuficientes para gerar recomendações.</p>
                                 </div>
                                 """
                             

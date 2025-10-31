@@ -638,7 +638,9 @@ class DashboardVisualizer:
     def _generate_policy_recommendations_card(recommendations: Dict) -> str:
         """🆕 Gera card com recomendações de políticas."""
         
-        if not recommendations.get('has_recommendations', False):
+        # 🔧 Verifica se há recomendações na lista
+        recs_list = recommendations.get('recommendations', [])
+        if not recs_list or len(recs_list) == 0:
             return """
             <div class='card'>
                 <h3>⚠️ Sem Recomendações</h3>
@@ -646,32 +648,30 @@ class DashboardVisualizer:
             </div>
             """
         
-        # Resumo
-        summary = recommendations.get('summary', '')
-        sentiment = recommendations.get('sentiment_data', {})
+        # Resumo do sentimento
+        sentiment = recommendations.get('sentiment_analysis', {})
+        engagement = recommendations.get('engagement_trends', {})
         
-        # Áreas críticas
-        areas_html = ""
-        for area in recommendations.get('critical_areas', []):
-            freq_color = {
-                'alta': '#f44336',
-                'média': '#ff9800',
-                'baixa': '#ffc107'
-            }.get(area.get('frequency', 'média').lower(), '#9e9e9e')
-            
-            examples = "<br/>".join([f"• {ex}" for ex in area.get('examples', [])[:2]])
-            
-            areas_html += f"""
-            <div style='background: #fff3e0; border-left: 4px solid {freq_color}; padding: 1rem; margin: 0.5rem 0; border-radius: 4px;'>
-                <h4 style='margin: 0 0 0.5rem 0;'>
-                    {area.get('area', '')}
-                    <span style='background: {freq_color}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8em; margin-left: 0.5rem;'>
-                        {area.get('frequency', '').upper()}
-                    </span>
-                </h4>
-                <div style='font-size: 0.9em; color: #555;'>{examples}</div>
+        # Cabeçalho com estatísticas
+        sentiment_html = f"""
+        <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0;'>
+            <div style='background: #e8f5e9; padding: 1rem; border-radius: 8px; text-align: center;'>
+                <div style='font-size: 2em;'>😊</div>
+                <div style='font-size: 1.5em; font-weight: bold; color: #4caf50;'>{sentiment.get('positive_pct', 0):.1f}%</div>
+                <div style='color: #555;'>Positivo</div>
             </div>
-            """
+            <div style='background: #fff3e0; padding: 1rem; border-radius: 8px; text-align: center;'>
+                <div style='font-size: 2em;'>😐</div>
+                <div style='font-size: 1.5em; font-weight: bold; color: #ff9800;'>{sentiment.get('neutral_pct', 0):.1f}%</div>
+                <div style='color: #555;'>Neutro</div>
+            </div>
+            <div style='background: #ffebee; padding: 1rem; border-radius: 8px; text-align: center;'>
+                <div style='font-size: 2em;'>😟</div>
+                <div style='font-size: 1.5em; font-weight: bold; color: #f44336;'>{sentiment.get('negative_pct', 0):.1f}%</div>
+                <div style='color: #555;'>Negativo</div>
+            </div>
+        </div>
+        """
         
         # Recomendações
         rec_html = ""
@@ -681,76 +681,80 @@ class DashboardVisualizer:
             'baixa': '🟢'
         }
         
-        for rec in recommendations.get('recommendations', []):
+        priority_colors = {
+            'alta': '#f44336',
+            'média': '#ff9800',
+            'baixa': '#4caf50'
+        }
+        
+        for i, rec in enumerate(recs_list, 1):
             priority = rec.get('priority', 'média').lower()
             icon = priority_icons.get(priority, '⚪')
+            color = priority_colors.get(priority, '#9e9e9e')
             
             rec_html += f"""
-            <div class='card' style='margin: 1rem 0;'>
-                <h4 style='margin-top: 0;'>
-                    {icon} {rec.get('area', '')}
-                    <span style='float: right; font-size: 0.8em; color: #666;'>
-                        Prazo: {rec.get('implementation_time', 'N/A')}
+            <div class='card' style='margin: 1rem 0; border-left: 4px solid {color};'>
+                <div style='display: flex; justify-content: space-between; align-items: start;'>
+                    <h4 style='margin-top: 0; flex: 1;'>
+                        {icon} {i}. {rec.get('area', 'Área não especificada')}
+                    </h4>
+                    <span style='background: {color}; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 0.85em; font-weight: bold;'>
+                        {priority.upper()}
                     </span>
-                </h4>
+                </div>
                 
-                <p><strong>Ação:</strong> {rec.get('action', '')}</p>
-                <p><strong>Impacto Esperado:</strong> {rec.get('expected_impact', '')}</p>
-                
-                {f"<p><strong>Responsável Sugerido:</strong> {rec.get('responsible', '')}</p>" if rec.get('responsible') else ''}
+                <div style='margin: 1rem 0;'>
+                    <p style='margin: 0.5rem 0;'><strong>📋 Ação Recomendada:</strong></p>
+                    <p style='margin: 0.5rem 0 1rem 1rem; line-height: 1.6;'>{rec.get('action', 'Não especificado')}</p>
+                    
+                    <p style='margin: 0.5rem 0;'><strong>🎯 Impacto Esperado:</strong></p>
+                    <p style='margin: 0.5rem 0 1rem 1rem; line-height: 1.6;'>{rec.get('expected_impact', 'Não especificado')}</p>
+                    
+                    {f"<p style='margin: 0.5rem 0;'><strong>💡 Justificativa:</strong></p><p style='margin: 0.5rem 0 1rem 1rem; line-height: 1.6; font-style: italic; color: #666;'>{rec.get('reasoning', '')}</p>" if rec.get('reasoning') else ''}
+                    
+                    <div style='display: flex; gap: 2rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9em;'>
+                        <div>
+                            <strong>⏱️ Prazo:</strong> {rec.get('implementation_time', 'N/A')}
+                        </div>
+                        <div>
+                            <strong>👤 Responsável:</strong> {rec.get('responsible', 'N/A')}
+                        </div>
+                    </div>
+                </div>
             </div>
             """
-        
-        # Aspectos positivos
-        positive_html = ""
-        if recommendations.get('positive_aspects'):
-            positive_items = "<br/>".join([f"✅ {asp}" for asp in recommendations.get('positive_aspects', [])])
-            positive_html = f"""
-            <div style='background: #e8f5e9; border-left: 4px solid #4caf50; padding: 1rem; margin: 1rem 0; border-radius: 4px;'>
-                <h4 style='margin-top: 0; color: #2e7d32;'>💚 Aspectos Positivos a Manter</h4>
-                <div>{positive_items}</div>
-            </div>
-            """
-        
-        # Observações
-        observations = recommendations.get('general_observations', '')
         
         return f"""
         <div class='card' style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;'>
-            <h2 style='margin-top: 0;'>🔮 RECOMENDAÇÕES DE POLÍTICAS</h2>
-            <p style='font-size: 0.9em; opacity: 0.9;'>
-                Gerado em: {recommendations.get('generated_at', 'N/A')[:16].replace('T', ' às ')} |
-                Perfil: @{recommendations.get('profile', 'N/A')} |
-                Negativos: {sentiment.get('negative_pct', 0)}%
+            <h2 style='margin-top: 0;'>🔮 RECOMENDAÇÕES DE POLÍTICAS PÚBLICAS</h2>
+            <p style='font-size: 0.95em; opacity: 0.95; margin: 0;'>
+                Análise baseada em {sentiment.get('total_analyzed', 0)} registros | 
+                Tendência: {engagement.get('recent_trend', 'N/A').title()}
             </p>
         </div>
         
         <div class='card'>
-            <h3>📋 Resumo das Críticas Identificadas</h3>
-            <p style='font-size: 1.1em; line-height: 1.6;'>{summary}</p>
+            <h3>� Panorama de Sentimento</h3>
+            {sentiment_html}
+            <p style='text-align: center; color: #666; font-size: 0.9em; margin-top: 1rem;'>
+                {sentiment.get('note', '')}
+            </p>
         </div>
         
         <div class='card'>
-            <h3>🚨 Áreas Problemáticas Identificadas</h3>
-            {areas_html}
-        </div>
-        
-        <div class='card'>
-            <h3>💡 Recomendações de Ações</h3>
+            <h3>💡 Recomendações de Ações ({len(recs_list)})</h3>
+            <p style='color: #666; margin-bottom: 1.5rem;'>
+                As seguintes ações foram recomendadas com base na análise completa do conteúdo das legendas e comentários:
+            </p>
             {rec_html}
         </div>
         
-        {positive_html}
-        
-        <div class='card'>
-            <h3>📝 Observações Gerais</h3>
-            <p style='line-height: 1.6;'>{observations}</p>
-        </div>
-        
         <div class='card' style='background: #f5f5f5; border-left: 4px solid #2196f3;'>
-            <p style='margin: 0;'>
-                <strong>ℹ️ Nota:</strong> Estas recomendações foram geradas automaticamente por IA 
-                baseadas na análise de sentimento e devem ser avaliadas por gestores antes da implementação.
+            <p style='margin: 0; line-height: 1.6;'>
+                <strong>ℹ️ Nota Metodológica:</strong> Estas recomendações foram geradas por IA (DeepSeek Chat) 
+                através da análise qualitativa completa das legendas e comentários dos posts, considerando contexto, 
+                temas recorrentes e preocupações da comunidade acadêmica. Recomenda-se avaliação criteriosa pela gestão 
+                antes da implementação.
             </p>
         </div>
         """

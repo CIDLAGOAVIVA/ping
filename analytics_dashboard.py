@@ -69,9 +69,13 @@ class DashboardAnalytics:
         Returns:
             Dict com análise de sentimento do perfil
         """
-        profile_clean = profile.replace('@', '').lower()
-        
-        where_clause = {'profile': profile_clean}
+        # 🆕 Trata profile=None (todos os perfis)
+        if profile is None:
+            where_clause = None
+            profile_clean = None
+        else:
+            profile_clean = profile.replace('@', '').lower()
+            where_clause = {'profile': profile_clean}
         
         results = self.collection.get(
             where=where_clause,
@@ -80,6 +84,7 @@ class DashboardAnalytics:
         )
         
         if not results['ids']:
+            profile_display = f'@{profile_clean}' if profile_clean else 'todos os perfis'
             return {
                 'profile': profile_clean,
                 'total_analyzed': 0,
@@ -90,7 +95,7 @@ class DashboardAnalytics:
                 'negative_pct': 0,
                 'neutral_pct': 0,
                 'trend': 'neutral',
-                'note': f'Nenhum registro encontrado para @{profile_clean}',
+                'note': f'Nenhum registro encontrado para {profile_display}',
                 'cached': False,
                 'content_filter': content_filter
             }
@@ -170,12 +175,12 @@ class DashboardAnalytics:
         # Análise nova (cache miss ou desabilitado)
         sentiment_data = self._analyze_sentiment_batch(
             filtered_documents,
-            [profile_clean],
+            [profile_clean] if profile_clean else None,
             use_llm=use_llm
         )
         
         sentiment_data['profile'] = profile_clean
-        sentiment_data['display_name'] = f"@{profile_clean}"
+        sentiment_data['display_name'] = f"@{profile_clean}" if profile_clean else "Todos os perfis"
         sentiment_data['cached'] = False
         sentiment_data['content_filter'] = content_filter
         
@@ -761,13 +766,16 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
     
     def _detect_emerging_topics(self, posts: List[Dict]) -> Dict[str, Any]:
         """
-        🆕 Detecta tópicos emergentes através das legendas e hashtags.
+        🆕 Detecta tópicos emergentes através das legendas e comentários.
+        
+        ⚠️ NOTA: Hashtags NÃO são incluídas na análise de recomendações de política.
+              Apenas legendas e comentários são analisados.
         
         Args:
-            posts: Lista de posts a analisar
+            posts: Lista de posts com 'caption' e opcionalmente 'hashtags'
         
         Returns:
-            Dicionário com tópicos emergentes e hashtags
+            Dicionário com tópicos emergentes (sem hashtags nas recomendações)
         """
         if not posts:
             return {
@@ -799,11 +807,24 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         hashtag_counter = {}
         
         for post in posts:
-            # Analisa caption/legenda
+            # 🔧 Analisa caption/legenda E comentários
+            text_to_analyze = []
+            
+            # Adiciona legenda
             caption = post.get('caption', '')
             if caption:
+                text_to_analyze.append(caption)
+            
+            # 🆕 Adiciona comentários (se disponível)
+            comments = post.get('comments_text', '')
+            if comments:
+                text_to_analyze.append(comments)
+            
+            # Processa todo o texto coletado
+            full_text = ' '.join(text_to_analyze)
+            if full_text:
                 # Tokeniza e limpa
-                words = caption.lower().split()
+                words = full_text.lower().split()
                 for word in words:
                     # Remove pontuação
                     word = ''.join(c for c in word if c.isalnum() or c in ['á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç'])
@@ -812,7 +833,8 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                     if len(word) >= 4 and word not in stopwords:
                         term_counter[word] = term_counter.get(word, 0) + 1
             
-            # 🔧 MELHORADO: Analisa hashtags com validação
+            # � HASHTAGS NÃO são mais analisadas para recomendações
+            # (mantido apenas para compatibilidade com dashboard geral)
             hashtags = post.get('hashtags', [])
             if isinstance(hashtags, list):
                 for tag in hashtags:
@@ -830,6 +852,22 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                         # Verifica se tem pelo menos uma letra
                         if any(c.isalpha() for c in tag_valid):
                             hashtag_counter[tag_valid] = hashtag_counter.get(tag_valid, 0) + 1
+        
+        # 🔍 DEBUG: Log de processamento
+        print(f"🔍 DEBUG _detect_emerging_topics:")
+        print(f"   Posts processados: {len(posts)}")
+        print(f"   Termos únicos encontrados: {len(term_counter)}")
+        if term_counter:
+            top_5_terms = sorted(term_counter.items(), key=lambda x: x[1], reverse=True)[:5]
+            print(f"   Top 5 termos: {top_5_terms}")
+        else:
+            print(f"   ⚠️ Nenhum termo encontrado!")
+            # Debug: mostra uma amostra dos dados
+            if posts:
+                sample = posts[0]
+                print(f"   Amostra post[0]:")
+                print(f"      caption: {sample.get('caption', 'VAZIO')[:100]}")
+                print(f"      comments_text: {sample.get('comments_text', 'VAZIO')[:100]}")
         
         # Top termos (ordenados por frequência)
         top_terms = sorted(
@@ -1009,141 +1047,293 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         else:
             raise ValueError(f"Formato inválido: {format}. Use 'csv' ou 'pdf'.")
     
-    def generate_policy_recommendations(
-        self,
-        profile: Optional[str] = None,
-        content_filter: str = "both",
-        use_cache: bool = True
-    ) -> Dict[str, Any]:
+    def _analyze_engagement_trends(self, documents: List[Dict]) -> Dict[str, Any]:
         """
-        🆕 Gera recomendações de políticas baseadas em críticas identificadas.
+        Analisa tendências de engajamento ao longo do tempo.
         
         Args:
-            profile: Perfil a analisar (None = todos)
-            content_filter: Tipo de conteúdo ("both", "caption", "comments")
-            use_cache: Se True, usa cache de sentimento
+            documents: Lista de documentos com metadados
         
         Returns:
-            Dicionário com recomendações categorizadas
+            Dict com análise de tendências
         """
-        from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
-        import llm_chat
-        
-        print(f"\n🔮 Gerando recomendações de políticas...")
-        
-        # 1. Obter análise de sentimento
-        sentiment = self.get_sentiment_by_profile(
-            profile=profile,
-            content_filter=content_filter,
-            use_llm=True,
-            use_cache=use_cache
-        )
-        
-        if sentiment.get('total_analyzed', 0) == 0:
+        if not documents:
             return {
-                'has_recommendations': False,
-                'message': 'Não há dados suficientes para gerar recomendações.',
-                'recommendations': []
+                'recent_trend': 'estável',
+                'avg_engagement': 0,
+                'peak_period': None,
+                'low_period': None
             }
         
-        # 2. Coletar posts negativos para análise detalhada
-        where_clause = {}
-        if profile:
-            where_clause['profile'] = profile
+        # Agrupa por período (últimos 7 dias, 14 dias, 30 dias)
+        now = datetime.now(timezone.utc)
+        week_ago = now - timedelta(days=7)
+        two_weeks_ago = now - timedelta(days=14)
         
-        results = self.collection.get(
-            where=where_clause,
-            include=['documents', 'metadatas'],
-            limit=500  # Analisa mais posts para ter contexto
-        )
+        recent_engagement = 0
+        previous_engagement = 0
+        recent_count = 0
+        previous_count = 0
         
-        # 3. Filtrar e preparar conteúdo negativo
-        negative_content = []
-        
-        for doc, meta in zip(results['documents'], results['metadatas']):
-            # Aplica filtro de conteúdo
-            filtered_text = self._filter_content_by_type(doc, meta, content_filter)
+        for doc in documents:
+            try:
+                metadata = doc.get('metadata', {})
+                if metadata.get('content_type') == 'news':
+                    continue
+                
+                post_date = date_parser.parse(metadata.get('timestamp', ''))
+                post_date = self._normalize_datetime(post_date)
+                
+                engagement = metadata.get('likesCount', 0) + metadata.get('commentsCount', 0)
+                
+                if post_date >= week_ago:
+                    recent_engagement += engagement
+                    recent_count += 1
+                elif post_date >= two_weeks_ago:
+                    previous_engagement += engagement
+                    previous_count += 1
             
-            if not filtered_text.strip():
+            except Exception as e:
                 continue
-            
-            negative_content.append({
-                'text': filtered_text[:500],  # Limita tamanho
-                'profile': meta.get('profile', ''),
-                'date': meta.get('timestamp', '')
-            })
         
-        if not negative_content:
+        # Calcula médias
+        recent_avg = recent_engagement / recent_count if recent_count > 0 else 0
+        previous_avg = previous_engagement / previous_count if previous_count > 0 else 0
+        
+        # Define tendência
+        if recent_avg > previous_avg * 1.1:
+            trend = 'crescimento'
+        elif recent_avg < previous_avg * 0.9:
+            trend = 'queda'
+        else:
+            trend = 'estável'
+        
+        return {
+            'recent_trend': trend,
+            'avg_engagement': round(recent_avg, 2),
+            'recent_period_avg': round(recent_avg, 2),
+            'previous_period_avg': round(previous_avg, 2),
+            'change_percentage': round(((recent_avg - previous_avg) / previous_avg * 100) if previous_avg > 0 else 0, 1)
+        }
+    
+    def generate_policy_recommendations(
+        self,
+        profile_filter: str = None,
+        min_engagement: int = 100,
+        top_n: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Gera recomendações de políticas baseadas em análise de dados.
+        
+        Args:
+            profile_filter: Filtro de perfil (opcional)
+            min_engagement: Engajamento mínimo para considerar
+            top_n: Número de recomendações
+        
+        Returns:
+            Dict com recomendações e análises
+        """
+        try:
+            # Busca todos os documentos
+            results = self.collection.get(
+                limit=100000,
+                include=['metadatas', 'documents']
+            )
+            
+            if not results['ids']:
+                return {
+                    'recommendations': [],
+                    'sentiment_analysis': {'positive': 0, 'neutral': 0, 'negative': 0},
+                    'top_topics': [],
+                    'engagement_trends': {},
+                    'error': 'Nenhum documento encontrado'
+                }
+            
+            # Converte para formato esperado
+            documents = []
+            for i, metadata in enumerate(results['metadatas']):
+                if profile_filter:
+                    profile_clean = profile_filter.replace('@', '').lower()
+                    if metadata.get('profile', '').lower() != profile_clean:
+                        continue
+                
+                if metadata.get('content_type') != 'news' and i < len(results['documents']):
+                    documents.append({
+                        'text': results['documents'][i],
+                        'metadata': metadata
+                    })
+            
+            # Busca sentimentos (agora aceita None)
+            sentiment = self.get_sentiment_by_profile(
+                profile_filter,
+                use_llm=False,  # Usa análise rápida para recomendações
+                use_cache=False
+            )
+            
+            # 🔧 Análise de tópicos (APENAS legendas e comentários do texto completo)
+            # Extrai texto completo de cada documento (já contém legenda + comentários)
+            posts_data = []
+            for doc in documents:
+                full_text = doc['text']  # Texto completo do documento
+                metadata = doc['metadata']
+                
+                # Tenta separar legenda e comentários do texto
+                caption_text = ''
+                comments_text = ''
+                
+                # Parse do texto estruturado
+                if '=== LEGENDA ===' in full_text:
+                    parts = full_text.split('=== LEGENDA ===')
+                    if len(parts) > 1:
+                        caption_part = parts[1]
+                        if '=== COMENTÁRIOS ===' in caption_part:
+                            caption_text = caption_part.split('=== COMENTÁRIOS ===')[0].strip()
+                            comments_text = caption_part.split('=== COMENTÁRIOS ===')[1].strip() if len(caption_part.split('=== COMENTÁRIOS ===')) > 1 else ''
+                        else:
+                            caption_text = caption_part.strip()
+                else:
+                    # Fallback: usa metadata se disponível
+                    caption_text = metadata.get('caption', '')
+                    comments_text = metadata.get('comments_text', '')
+                
+                # Se não conseguiu parsear, usa texto completo (sem hashtags)
+                if not caption_text and not comments_text:
+                    caption_text = full_text
+                
+                posts_data.append({
+                    'caption': caption_text,
+                    'comments_text': comments_text,
+                    'hashtags': []  # 🚫 SEM hashtags
+                })
+            
+            print(f"📝 Analisando {len(posts_data)} registros (legendas + comentários)...")
+            
+            # Tendências de engajamento
+            engagement_trends = self._analyze_engagement_trends(documents)
+            
+            # 🤖 GERAÇÃO INTELIGENTE DE RECOMENDAÇÕES COM LLM
+            # Em vez de usar contagem de termos, usa IA para analisar o conteúdo completo
+            print(f"🤖 Gerando recomendações inteligentes com LLM...")
+            recommendations = self._generate_recommendations_with_llm(
+                posts_data=posts_data,
+                sentiment=sentiment,
+                engagement_trends=engagement_trends,
+                top_n=top_n
+            )
+            
             return {
-                'has_recommendations': False,
-                'message': 'Nenhum conteúdo disponível para análise.',
-                'recommendations': []
+                'recommendations': recommendations,
+                'sentiment_analysis': sentiment,
+                'top_topics': [],  # Removido análise de termos
+                'engagement_trends': engagement_trends
             }
         
-        # 4. Limitar a 50 posts para não sobrecarregar LLM
-        sample = negative_content[:50]
+        except Exception as e:
+            print(f"❌ Erro ao gerar recomendações: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'recommendations': [],
+                'sentiment_analysis': {'positive': 0, 'neutral': 0, 'negative': 0},
+                'top_topics': [],
+                'engagement_trends': {},
+                'error': str(e)
+            }
+    
+    def _generate_recommendations_with_llm(
+        self,
+        posts_data: List[Dict[str, Any]],
+        sentiment: Dict[str, Any],
+        engagement_trends: Dict[str, Any],
+        top_n: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        🤖 Gera recomendações de políticas usando LLM para análise inteligente.
         
-        # 5. Construir prompt para análise de críticas
-        content_text = "\n\n---\n\n".join([
-            f"Post {i+1} (@{item['profile']}):\n{item['text']}"
-            for i, item in enumerate(sample)
-        ])
+        Analisa TODO o conteúdo das legendas e comentários para gerar
+        recomendações contextualizadas e relevantes.
         
-        prompt = f"""Você é um consultor de políticas públicas e comunicação institucional.
+        Args:
+            posts_data: Lista de posts com 'caption' e 'comments_text'
+            sentiment: Análise de sentimento
+            engagement_trends: Tendências de engajamento
+            top_n: Número de recomendações a gerar
+        
+        Returns:
+            Lista de recomendações estruturadas
+        """
+        try:
+            # Prepara amostra representativa do conteúdo
+            # Pega posts recentes e mais relevantes
+            sample_size = min(100, len(posts_data))
+            sample_posts = posts_data[:sample_size]
+            
+            # Concatena todo o conteúdo (limitado para não estourar token limit)
+            all_content = []
+            for i, post in enumerate(sample_posts):
+                caption = post.get('caption', '')
+                comments = post.get('comments_text', '')
+                
+                if caption:
+                    all_content.append(f"LEGENDA {i+1}: {caption[:500]}")
+                if comments:
+                    all_content.append(f"COMENTÁRIOS {i+1}: {comments[:500]}")
+            
+            content_summary = "\n\n".join(all_content[:50])  # Limita a 50 trechos
+            
+            # Prepara prompt para LLM
+            prompt = f"""Você é um consultor de políticas públicas universitárias analisando comunicação institucional da UFF (Universidade Federal Fluminense).
 
-Analise os posts/comentários abaixo sobre perfis institucionais da UFF (Universidade Federal Fluminense).
+ANÁLISE DE DADOS:
+- Total de posts analisados: {len(posts_data)}
+- Sentimento geral: {sentiment.get('positive_pct', 0):.1f}% positivo, {sentiment.get('negative_pct', 0):.1f}% negativo, {sentiment.get('neutral_pct', 0):.1f}% neutro
+- Tendência de engajamento: {engagement_trends.get('recent_trend', 'estável')}
+- Engajamento médio recente: {engagement_trends.get('avg_engagement', 0):.1f}
 
-CONTEÚDO ANALISADO:
-{content_text}
-
-ANÁLISE DE SENTIMENTO GERAL:
-- Total analisado: {sentiment.get('total_analyzed', 0)} registros
-- Negativos: {sentiment.get('negative', 0)} ({sentiment.get('negative_pct', 0)}%)
-- Neutros: {sentiment.get('neutral', 0)} ({sentiment.get('neutral_pct', 0)}%)
-- Positivos: {sentiment.get('positive', 0)} ({sentiment.get('positive_pct', 0)}%)
-- Tendência: {sentiment.get('trend', 'N/A')}
+AMOSTRA DO CONTEÚDO (legendas e comentários reais):
+{content_summary}
 
 TAREFA:
-Identifique as PRINCIPAIS CRÍTICAS e PROBLEMAS mencionados, depois sugira RECOMENDAÇÕES DE POLÍTICAS concretas e viáveis.
+Baseado na análise COMPLETA do conteúdo acima (não apenas em palavras-chave), gere {top_n} recomendações de políticas públicas universitárias.
 
-Retorne APENAS um JSON no formato:
+Considere:
+1. Temas recorrentes nas conversas (não apenas termos frequentes)
+2. Preocupações e demandas dos estudantes e comunidade
+3. Sentimento geral e específico sobre tópicos
+4. Contexto universitário público brasileiro
 
+FORMATO DA RESPOSTA (JSON):
 {{
-  "summary": "Resumo das principais críticas identificadas (2-3 frases)",
-  "critical_areas": [
-    {{
-      "area": "Nome da área problemática",
-      "frequency": "alta/média/baixa",
-      "examples": ["Exemplo de crítica 1", "Exemplo 2"]
-    }}
-  ],
   "recommendations": [
     {{
-      "priority": "alta/média/baixa",
-      "area": "Área a melhorar",
-      "action": "Ação específica recomendada",
-      "expected_impact": "Impacto esperado",
-      "implementation_time": "curto/médio/longo prazo",
-      "responsible": "Sugestão de responsável"
+      "priority": "alta|média|baixa",
+      "area": "Nome da área de atuação",
+      "action": "Descrição específica da ação recomendada",
+      "expected_impact": "Impacto esperado da implementação",
+      "implementation_time": "curto prazo|médio prazo|longo prazo",
+      "responsible": "Responsável pela implementação",
+      "reasoning": "Justificativa baseada no conteúdo analisado"
     }}
-  ],
-  "positive_aspects": [
-    "Aspecto positivo a manter"
-  ],
-  "general_observations": "Observações gerais sobre comunicação e gestão"
+  ]
 }}
 
-Seja ESPECÍFICO, PRÁTICO e focado em AÇÕES CONCRETAS."""
+IMPORTANTE:
+- Seja ESPECÍFICO e baseado no CONTEÚDO REAL analisado
+- Não use recomendações genéricas
+- Cite temas/preocupações identificados nos posts
+- Priorize ações viáveis no contexto universitário público"""
 
-        try:
-            # Usa provider configurado
+            # Chama LLM
+            from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
+            import llm_chat
+            import json
+            
             if DEFAULT_PROVIDER == 'deepseek':
                 model = DEEPSEEK_MODEL
             else:
                 model = "qwen3:30b"
             
-            print(f"   🤖 Usando {model} para análise...")
-            
+            print(f"   🔮 Consultando {model} para análise...")
             response = llm_chat.chat(
                 model=model,
                 messages=[{'role': 'user', 'content': prompt}]
@@ -1157,32 +1347,114 @@ Seja ESPECÍFICO, PRÁTICO e focado em AÇÕES CONCRETAS."""
             elif '```' in response_text:
                 response_text = response_text.split('```')[1].split('```')[0]
             
-            import json
-            analysis = json.loads(response_text.strip())
+            result = json.loads(response_text.strip())
+            recommendations = result.get('recommendations', [])
             
-            # Adiciona metadados
-            analysis['has_recommendations'] = True
-            analysis['generated_at'] = datetime.now().isoformat()
-            analysis['profile'] = profile or 'todos os perfis'
-            analysis['content_filter'] = content_filter
-            analysis['sentiment_data'] = {
-                'total_analyzed': sentiment.get('total_analyzed', 0),
-                'negative_pct': sentiment.get('negative_pct', 0),
-                'trend': sentiment.get('trend', 'N/A')
-            }
+            print(f"   ✅ {len(recommendations)} recomendações geradas com sucesso!")
             
-            print(f"   ✅ {len(analysis.get('recommendations', []))} recomendações geradas")
-            
-            return analysis
+            return recommendations[:top_n]
         
         except Exception as e:
-            print(f"   ❌ Erro ao gerar recomendações: {e}")
-            return {
-                'has_recommendations': False,
-                'error': str(e),
-                'message': 'Erro ao processar recomendações. Tente novamente.',
-                'recommendations': []
-            }
+            print(f"   ❌ Erro ao gerar recomendações com LLM: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback: recomendação genérica
+            return [{
+                'priority': 'média',
+                'area': 'Análise de Dados',
+                'action': 'Revisar dados e tentar novamente',
+                'expected_impact': 'Geração de recomendações mais precisas',
+                'implementation_time': 'imediato',
+                'responsible': 'Equipe Técnica',
+                'reasoning': f'Erro na análise automática: {str(e)}'
+            }]
+    
+    def get_trending_topics(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Retorna tópicos em alta baseado em hashtags e termos frequentes.
+        
+        Args:
+            limit: Número máximo de tópicos a retornar
+        
+        Returns:
+            Lista de dicionários com tópicos e contagens
+        """
+        # Busca todos os posts
+        results = self.collection.get(
+            limit=100000,
+            include=['metadatas']
+        )
+        
+        if not results['ids']:
+            return []
+        
+        # Conta hashtags
+        hashtag_counter = {}
+        for metadata in results['metadatas']:
+            if metadata.get('content_type') == 'news':
+                continue
+            
+            hashtags = metadata.get('hashtags', [])
+            if isinstance(hashtags, list):
+                for tag in hashtags:
+                    tag_clean = tag.lower().replace('#', '').strip()
+                    if len(tag_clean) >= 3:
+                        hashtag_counter[tag_clean] = hashtag_counter.get(tag_clean, 0) + 1
+        
+        # Ordena e retorna top N
+        top_topics = sorted(
+            hashtag_counter.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:limit]
+        
+        return [
+            {'topic': tag, 'count': count}
+            for tag, count in top_topics
+        ]
+
+
+def main():
+    """Função de teste."""
+    print("=== Testando Dashboard Analytics ===\n")
+    
+    em = EmbeddingManager()
+    analytics = DashboardAnalytics(em)
+    
+    # Teste: últimos 30 dias
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=30)
+    
+    print("📊 Métricas dos últimos 30 dias:\n")
+    metrics = analytics.get_date_range_data(
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat()
+    )
+    
+    print(f"Total de registros: {metrics['summary']['total_records']}")
+    print(f"Registros: {metrics['posts']['total']}")
+    print(f"Notícias: {metrics['news']['total']}")
+    print(f"Engajamento total: {metrics['posts']['total_engagement']}")
+    print(f"Média de engajamento: {metrics['posts']['avg_engagement']}")
+    
+    # 🆕 Teste de sentimento
+    print("\n🎭 Análise de Sentimento:")
+    sentiment = metrics.get('sentiment', {})
+    print(f"Total analisado: {sentiment.get('total_analyzed', 0)}")
+    print(f"✅ Positivo: {sentiment.get('positive', 0)} ({sentiment.get('positive_pct', 0)}%)")
+    print(f"❌ Negativo: {sentiment.get('negative', 0)} ({sentiment.get('negative_pct', 0)}%)")
+    print(f"⚪ Neutro: {sentiment.get('neutral', 0)} ({sentiment.get('neutral_pct', 0)}%)")
+    print(f"📊 Tendência: {sentiment.get('trend', 'N/A')}")
+    
+    print("\n#️⃣ Top 5 hashtags:")
+    topics = analytics.get_trending_topics(limit=5)
+    for i, topic in enumerate(topics, 1):
+        print(f"{i}. #{topic['topic']}: {topic['count']} menções")
+
+
+if __name__ == '__main__':
+    main()
     
 
 def main():
