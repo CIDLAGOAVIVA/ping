@@ -12,3 +12,8 @@ wheels/
 # Cache de análise de sentimento
 cache/
 *.cache
+
+# 🆕 Relatórios exportados
+exports/
+*.csv
+*.pdf

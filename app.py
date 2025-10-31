@@ -1208,7 +1208,7 @@ class InstagramRAGApp:
                 profile_filter = [p.replace('@', '') for p in profile_filter]
             
             # Busca métricas
-            metrics = self.analytics.get_date_range_data(
+            metrics = self.dashboard_analytics.get_date_range_data(
                 start_date=start_date,
                 end_date=end_date,
                 profile_filter=profile_filter,
@@ -1217,14 +1217,18 @@ class InstagramRAGApp:
                 content_filter=content_filter
             )
             
-            # Exporta
+            # 🔧 CORRIGIDO: Usa diretório local em vez de /tmp
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"relatorio_uff_{timestamp}.{format}"
             
-            content = self.analytics.export_report(metrics, format, filename)
+            content = self.dashboard_analytics.export_report(metrics, format, filename)
             
-            # Salva arquivo temporário
-            filepath = f"/tmp/{filename}"
+            # Cria diretório de exports se não existir
+            exports_dir = Path('./exports')
+            exports_dir.mkdir(exist_ok=True)
+            
+            # Salva arquivo local
+            filepath = exports_dir / filename
             if format == 'csv':
                 with open(filepath, 'w', encoding='utf-8') as f:
                     f.write(content)
@@ -1232,7 +1236,8 @@ class InstagramRAGApp:
                 with open(filepath, 'wb') as f:
                     f.write(content)
             
-            return filepath, content
+            print(f"✅ Relatório salvo: {filepath}")
+            return str(filepath), content
         
         except Exception as e:
             print(f"❌ Erro ao exportar relatório: {e}")
