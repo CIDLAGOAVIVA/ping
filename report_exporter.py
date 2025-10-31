@@ -112,23 +112,6 @@ class ReportExporter:
                     topic.get('growth_indicator', 0)
                 ])
             writer.writerow([])
-            
-            # 🔧 CORRIGIDO: Top 5 Hashtags
-            writer.writerow(['=== TOP 5 HASHTAGS ==='])
-            total_unique = emerging.get('total_unique_hashtags', 0)
-            total_occurrences = emerging.get('total_hashtag_occurrences', 0)
-            writer.writerow(['Total de hashtags únicas:', total_unique])
-            writer.writerow(['Total de ocorrências:', total_occurrences])
-            writer.writerow([])
-            writer.writerow(['Ranking', 'Hashtag', 'Menções', 'Percentual'])
-            for i, hashtag in enumerate(emerging.get('top_hashtags', [])[:5], 1):  # 🆕 Apenas 5
-                writer.writerow([
-                    i,
-                    f"#{hashtag.get('tag', '')}",
-                    hashtag.get('count', 0),
-                    f"{hashtag.get('percentage', 0)}%"
-                ])
-            writer.writerow([])
         
         # Notícias
         news_data = metrics.get('news', {})
@@ -382,46 +365,6 @@ class ReportExporter:
             
             elements.append(topics_table)
             elements.append(Spacer(1, 0.3*inch))
-            
-            # 🔧 CORRIGIDO: Top 5 Hashtags
-            elements.append(Paragraph("TOP 5 HASHTAGS", heading_style))
-            
-            # Card de estatísticas
-            total_unique = emerging.get('total_unique_hashtags', 0)
-            total_occurrences = emerging.get('total_hashtag_occurrences', 0)
-            avg_per_post = round(total_occurrences / emerging.get('total_posts_analyzed', 1), 2)
-            
-            stats_text = f"""
-            <b>Estatísticas Gerais:</b><br/>
-            • Total de hashtags únicas: <b>{total_unique}</b><br/>
-            • Total de ocorrências: <b>{total_occurrences}</b><br/>
-            • Média por post: <b>{avg_per_post}</b>
-            """
-            elements.append(Paragraph(stats_text, styles['Normal']))
-            elements.append(Spacer(1, 0.2*inch))
-            
-            hashtags_data = [['#', 'Hashtag', 'Menções', '%']]
-            for i, hashtag in enumerate(emerging.get('top_hashtags', [])[:5], 1):  # 🆕 Apenas 5
-                hashtags_data.append([
-                    str(i),
-                    f"#{hashtag.get('tag', '')}",
-                    f"{hashtag.get('count', 0):,}",
-                    f"{hashtag.get('percentage', 0)}%"
-                ])
-            
-            hashtags_table = Table(hashtags_data, colWidths=[0.5*inch, 2*inch, 1.2*inch, 1*inch])
-            hashtags_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2196f3')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#bbdefb')),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            
-            elements.append(hashtags_table)
         
         # 🆕 Recomendações de Políticas
         recommendations = metrics.get('policy_recommendations', {})
@@ -572,10 +515,6 @@ def main():
             'topics': [
                 {'term': 'greve', 'count': 156, 'percentage': 6.5},
                 {'term': 'HUAP', 'count': 134, 'percentage': 5.6}
-            ],
-            'top_hashtags': [
-                {'tag': 'UFF', 'count': 245},
-                {'tag': 'GreveNaUFF', 'count': 156}
             ]
         },
         'news': {

@@ -1269,6 +1269,47 @@ class InstagramRAGApp:
                 content_filter=content_filter
             )
             
+            # 🆕 ADICIONA RECOMENDAÇÕES DE POLÍTICA ao relatório
+            try:
+                print("\n🔮 Gerando recomendações de políticas para o relatório...")
+                profile = profile_filter[0] if profile_filter and len(profile_filter) == 1 else None
+                
+                recommendations = self.dashboard_analytics.generate_policy_recommendations(
+                    profile_filter=profile,
+                    min_engagement=100,
+                    top_n=5
+                )
+                
+                # 🔧 TRANSFORMA formato LLM para formato do exportador
+                if recommendations and recommendations.get('recommendations'):
+                    from datetime import datetime
+                    
+                    # Extrai dados de sentimento
+                    sentiment_data = recommendations.get('sentiment_analysis', {})
+                    
+                    # Monta formato esperado pelo exportador
+                    export_format = {
+                        'has_recommendations': True,
+                        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'profile': f"@{profile}" if profile else "Todos os perfis",
+                        'content_filter': content_filter,
+                        'sentiment_data': sentiment_data,
+                        'summary': f"Análise baseada em {len(recommendations.get('recommendations', []))} recomendações geradas automaticamente.",
+                        'critical_areas': [],  # Pode ser preenchido futuramente
+                        'recommendations': recommendations.get('recommendations', []),
+                        'positive_aspects': [],  # Pode ser preenchido futuramente
+                        'general_observations': f"Sentimento: {sentiment_data.get('positive_pct', 0):.1f}% positivo, {sentiment_data.get('negative_pct', 0):.1f}% negativo"
+                    }
+                    
+                    metrics['policy_recommendations'] = export_format
+                    print(f"✅ {len(recommendations['recommendations'])} recomendações incluídas no relatório")
+                else:
+                    print("⚠️ Nenhuma recomendação gerada (dados insuficientes)")
+            except Exception as e:
+                print(f"⚠️ Erro ao gerar recomendações: {e}")
+                import traceback
+                traceback.print_exc()
+            
             # 🔧 CORRIGIDO: Usa diretório local em vez de /tmp
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"relatorio_uff_{timestamp}.{format}"
