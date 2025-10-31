@@ -408,37 +408,103 @@ class ReportExporter:
             elements.append(areas_table)
             elements.append(Spacer(1, 0.3*inch))
             
-            # Recomendações
+            # 🆕 Recomendações em CARDS (texto corrido, mais legível)
             elements.append(PageBreak())
             elements.append(Paragraph("Ações Recomendadas", styles['Heading3']))
+            elements.append(Spacer(1, 0.2*inch))
             
-            rec_data = [['Prioridade', 'Área', 'Ação', 'Impacto', 'Prazo']]
-            for rec in recommendations.get('recommendations', []):
+            # Estilo para cards de recomendações
+            card_style = ParagraphStyle(
+                'CardStyle',
+                parent=styles['Normal'],
+                fontSize=10,
+                leading=14,
+                spaceAfter=6,
+                leftIndent=10,
+                rightIndent=10
+            )
+            
+            card_title_style = ParagraphStyle(
+                'CardTitle',
+                parent=styles['Heading3'],
+                fontSize=12,
+                textColor=colors.HexColor('#4caf50'),
+                spaceAfter=8,
+                spaceBefore=0
+            )
+            
+            # Itera sobre cada recomendação criando um card
+            for i, rec in enumerate(recommendations.get('recommendations', []), 1):
                 priority = rec.get('priority', '').upper()
+                area = rec.get('area', 'N/A')
+                action = rec.get('action', 'N/A')
+                impact = rec.get('expected_impact', 'N/A')
+                time = rec.get('implementation_time', 'N/A')
+                responsible = rec.get('responsible', 'N/A')
+                reasoning = rec.get('reasoning', '')
                 
-                rec_data.append([
-                    priority,
-                    rec.get('area', '')[:30],
-                    rec.get('action', '')[:80],
-                    rec.get('expected_impact', '')[:60],
-                    rec.get('implementation_time', '')
-                ])
+                # Define cor da prioridade
+                if priority == 'ALTA':
+                    priority_color = colors.HexColor('#f44336')
+                    bg_color = colors.HexColor('#ffebee')
+                elif priority == 'MÉDIA':
+                    priority_color = colors.HexColor('#ff9800')
+                    bg_color = colors.HexColor('#fff3e0')
+                else:
+                    priority_color = colors.HexColor('#2196f3')
+                    bg_color = colors.HexColor('#e3f2fd')
+                
+                # Card container (tabela com fundo colorido)
+                card_header = f"""
+                <para align="center">
+                    <b><font size="11" color="{priority_color.hexval()}">
+                    🎯 RECOMENDAÇÃO {i} - PRIORIDADE {priority}
+                    </font></b>
+                </para>
+                """
+                
+                card_content = f"""
+                <b>Área de Atuação:</b><br/>
+                {area}<br/>
+                <br/>
+                <b>Ação Recomendada:</b><br/>
+                {action}<br/>
+                <br/>
+                <b>Impacto Esperado:</b><br/>
+                {impact}<br/>
+                <br/>
+                <b>Prazo de Implementação:</b> {time.title()}<br/>
+                <b>Responsável:</b> {responsible}<br/>
+                """
+                
+                if reasoning:
+                    card_content += f"""
+                    <br/>
+                    <b>Justificativa:</b><br/>
+                    <i>{reasoning}</i>
+                    """
+                
+                # Adiciona elementos do card
+                elements.append(Paragraph(card_header, card_title_style))
+                
+                # Cria card com borda e fundo colorido
+                card_data = [[Paragraph(card_content, card_style)]]
+                card_table = Table(card_data, colWidths=[6.5*inch])
+                card_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), bg_color),
+                    ('BORDER', (0, 0), (-1, -1), 2, priority_color),
+                    ('TOPPADDING', (0, 0), (-1, -1), 12),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 15),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                
+                elements.append(card_table)
+                elements.append(Spacer(1, 0.25*inch))
             
-            rec_table = Table(rec_data, colWidths=[0.8*inch, 1.2*inch, 2*inch, 1.5*inch, 0.8*inch])
-            rec_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4caf50')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#c8e6c9')),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            
-            elements.append(rec_table)
-            elements.append(Spacer(1, 0.3*inch))
+            # Espaço após recomendações
+            elements.append(Spacer(1, 0.2*inch))
             
             # Aspectos positivos
             if recommendations.get('positive_aspects'):
@@ -450,7 +516,7 @@ class ReportExporter:
         # Rodapé
         elements.append(Spacer(1, 0.5*inch))
         footer = Paragraph(
-            "Desenvolvido com ❤️ para a comunidade UFF<br/>PING - UFF ANALYTICS",
+            "Desenvolvido pelo CID - Centro de Inovação em Dados",
             styles['Normal']
         )
         elements.append(footer)
