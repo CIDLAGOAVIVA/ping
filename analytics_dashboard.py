@@ -1009,6 +1009,181 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         else:
             raise ValueError(f"Formato inválido: {format}. Use 'csv' ou 'pdf'.")
     
+    def generate_policy_recommendations(
+        self,
+        profile: Optional[str] = None,
+        content_filter: str = "both",
+        use_cache: bool = True
+    ) -> Dict[str, Any]:
+        """
+        🆕 Gera recomendações de políticas baseadas em críticas identificadas.
+        
+        Args:
+            profile: Perfil a analisar (None = todos)
+            content_filter: Tipo de conteúdo ("both", "caption", "comments")
+            use_cache: Se True, usa cache de sentimento
+        
+        Returns:
+            Dicionário com recomendações categorizadas
+        """
+        from config import DEFAULT_PROVIDER, DEEPSEEK_MODEL
+        import llm_chat
+        
+        print(f"\n🔮 Gerando recomendações de políticas...")
+        
+        # 1. Obter análise de sentimento
+        sentiment = self.get_sentiment_by_profile(
+            profile=profile,
+            content_filter=content_filter,
+            use_llm=True,
+            use_cache=use_cache
+        )
+        
+        if sentiment.get('total_analyzed', 0) == 0:
+            return {
+                'has_recommendations': False,
+                'message': 'Não há dados suficientes para gerar recomendações.',
+                'recommendations': []
+            }
+        
+        # 2. Coletar posts negativos para análise detalhada
+        where_clause = {}
+        if profile:
+            where_clause['profile'] = profile
+        
+        results = self.collection.get(
+            where=where_clause,
+            include=['documents', 'metadatas'],
+            limit=500  # Analisa mais posts para ter contexto
+        )
+        
+        # 3. Filtrar e preparar conteúdo negativo
+        negative_content = []
+        
+        for doc, meta in zip(results['documents'], results['metadatas']):
+            # Aplica filtro de conteúdo
+            filtered_text = self._filter_content_by_type(doc, meta, content_filter)
+            
+            if not filtered_text.strip():
+                continue
+            
+            negative_content.append({
+                'text': filtered_text[:500],  # Limita tamanho
+                'profile': meta.get('profile', ''),
+                'date': meta.get('timestamp', '')
+            })
+        
+        if not negative_content:
+            return {
+                'has_recommendations': False,
+                'message': 'Nenhum conteúdo disponível para análise.',
+                'recommendations': []
+            }
+        
+        # 4. Limitar a 50 posts para não sobrecarregar LLM
+        sample = negative_content[:50]
+        
+        # 5. Construir prompt para análise de críticas
+        content_text = "\n\n---\n\n".join([
+            f"Post {i+1} (@{item['profile']}):\n{item['text']}"
+            for i, item in enumerate(sample)
+        ])
+        
+        prompt = f"""Você é um consultor de políticas públicas e comunicação institucional.
+
+Analise os posts/comentários abaixo sobre perfis institucionais da UFF (Universidade Federal Fluminense).
+
+CONTEÚDO ANALISADO:
+{content_text}
+
+ANÁLISE DE SENTIMENTO GERAL:
+- Total analisado: {sentiment.get('total_analyzed', 0)} registros
+- Negativos: {sentiment.get('negative', 0)} ({sentiment.get('negative_pct', 0)}%)
+- Neutros: {sentiment.get('neutral', 0)} ({sentiment.get('neutral_pct', 0)}%)
+- Positivos: {sentiment.get('positive', 0)} ({sentiment.get('positive_pct', 0)}%)
+- Tendência: {sentiment.get('trend', 'N/A')}
+
+TAREFA:
+Identifique as PRINCIPAIS CRÍTICAS e PROBLEMAS mencionados, depois sugira RECOMENDAÇÕES DE POLÍTICAS concretas e viáveis.
+
+Retorne APENAS um JSON no formato:
+
+{{
+  "summary": "Resumo das principais críticas identificadas (2-3 frases)",
+  "critical_areas": [
+    {{
+      "area": "Nome da área problemática",
+      "frequency": "alta/média/baixa",
+      "examples": ["Exemplo de crítica 1", "Exemplo 2"]
+    }}
+  ],
+  "recommendations": [
+    {{
+      "priority": "alta/média/baixa",
+      "area": "Área a melhorar",
+      "action": "Ação específica recomendada",
+      "expected_impact": "Impacto esperado",
+      "implementation_time": "curto/médio/longo prazo",
+      "responsible": "Sugestão de responsável"
+    }}
+  ],
+  "positive_aspects": [
+    "Aspecto positivo a manter"
+  ],
+  "general_observations": "Observações gerais sobre comunicação e gestão"
+}}
+
+Seja ESPECÍFICO, PRÁTICO e focado em AÇÕES CONCRETAS."""
+
+        try:
+            # Usa provider configurado
+            if DEFAULT_PROVIDER == 'deepseek':
+                model = DEEPSEEK_MODEL
+            else:
+                model = "qwen3:30b"
+            
+            print(f"   🤖 Usando {model} para análise...")
+            
+            response = llm_chat.chat(
+                model=model,
+                messages=[{'role': 'user', 'content': prompt}]
+            )
+            
+            response_text = response['message']['content']
+            
+            # Parse JSON
+            if '```json' in response_text:
+                response_text = response_text.split('```json')[1].split('```')[0]
+            elif '```' in response_text:
+                response_text = response_text.split('```')[1].split('```')[0]
+            
+            import json
+            analysis = json.loads(response_text.strip())
+            
+            # Adiciona metadados
+            analysis['has_recommendations'] = True
+            analysis['generated_at'] = datetime.now().isoformat()
+            analysis['profile'] = profile or 'todos os perfis'
+            analysis['content_filter'] = content_filter
+            analysis['sentiment_data'] = {
+                'total_analyzed': sentiment.get('total_analyzed', 0),
+                'negative_pct': sentiment.get('negative_pct', 0),
+                'trend': sentiment.get('trend', 'N/A')
+            }
+            
+            print(f"   ✅ {len(analysis.get('recommendations', []))} recomendações geradas")
+            
+            return analysis
+        
+        except Exception as e:
+            print(f"   ❌ Erro ao gerar recomendações: {e}")
+            return {
+                'has_recommendations': False,
+                'error': str(e),
+                'message': 'Erro ao processar recomendações. Tente novamente.',
+                'recommendations': []
+            }
+    
 
 def main():
     """Função de teste."""

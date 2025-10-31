@@ -26,6 +26,7 @@ class DashboardVisualizer:
         news_data = metrics.get('news', {})
         sentiment_data = metrics.get('sentiment', {})
         emerging_topics_data = metrics.get('emerging_topics', {})  # 🆕
+        recommendations_data = metrics.get('recommendations', {})  # 🆕
         
         html = f"""
         <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
@@ -59,6 +60,9 @@ class DashboardVisualizer:
             
             <!-- Notícias -->
             {DashboardVisualizer._generate_news_section(news_data)}
+            
+            <!-- 🆕 Recomendações de Políticas -->
+            {DashboardVisualizer._generate_policy_recommendations_card(recommendations_data)}
         </div>
         """
         
@@ -629,6 +633,127 @@ class DashboardVisualizer:
             {pubs_html}
         </div>
         """
+    
+    @staticmethod
+    def _generate_policy_recommendations_card(recommendations: Dict) -> str:
+        """🆕 Gera card com recomendações de políticas."""
+        
+        if not recommendations.get('has_recommendations', False):
+            return """
+            <div class='card'>
+                <h3>⚠️ Sem Recomendações</h3>
+                <p>Não há dados suficientes para gerar recomendações.</p>
+            </div>
+            """
+        
+        # Resumo
+        summary = recommendations.get('summary', '')
+        sentiment = recommendations.get('sentiment_data', {})
+        
+        # Áreas críticas
+        areas_html = ""
+        for area in recommendations.get('critical_areas', []):
+            freq_color = {
+                'alta': '#f44336',
+                'média': '#ff9800',
+                'baixa': '#ffc107'
+            }.get(area.get('frequency', 'média').lower(), '#9e9e9e')
+            
+            examples = "<br/>".join([f"• {ex}" for ex in area.get('examples', [])[:2]])
+            
+            areas_html += f"""
+            <div style='background: #fff3e0; border-left: 4px solid {freq_color}; padding: 1rem; margin: 0.5rem 0; border-radius: 4px;'>
+                <h4 style='margin: 0 0 0.5rem 0;'>
+                    {area.get('area', '')}
+                    <span style='background: {freq_color}; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8em; margin-left: 0.5rem;'>
+                        {area.get('frequency', '').upper()}
+                    </span>
+                </h4>
+                <div style='font-size: 0.9em; color: #555;'>{examples}</div>
+            </div>
+            """
+        
+        # Recomendações
+        rec_html = ""
+        priority_icons = {
+            'alta': '🔴',
+            'média': '🟡',
+            'baixa': '🟢'
+        }
+        
+        for rec in recommendations.get('recommendations', []):
+            priority = rec.get('priority', 'média').lower()
+            icon = priority_icons.get(priority, '⚪')
+            
+            rec_html += f"""
+            <div class='card' style='margin: 1rem 0;'>
+                <h4 style='margin-top: 0;'>
+                    {icon} {rec.get('area', '')}
+                    <span style='float: right; font-size: 0.8em; color: #666;'>
+                        Prazo: {rec.get('implementation_time', 'N/A')}
+                    </span>
+                </h4>
+                
+                <p><strong>Ação:</strong> {rec.get('action', '')}</p>
+                <p><strong>Impacto Esperado:</strong> {rec.get('expected_impact', '')}</p>
+                
+                {f"<p><strong>Responsável Sugerido:</strong> {rec.get('responsible', '')}</p>" if rec.get('responsible') else ''}
+            </div>
+            """
+        
+        # Aspectos positivos
+        positive_html = ""
+        if recommendations.get('positive_aspects'):
+            positive_items = "<br/>".join([f"✅ {asp}" for asp in recommendations.get('positive_aspects', [])])
+            positive_html = f"""
+            <div style='background: #e8f5e9; border-left: 4px solid #4caf50; padding: 1rem; margin: 1rem 0; border-radius: 4px;'>
+                <h4 style='margin-top: 0; color: #2e7d32;'>💚 Aspectos Positivos a Manter</h4>
+                <div>{positive_items}</div>
+            </div>
+            """
+        
+        # Observações
+        observations = recommendations.get('general_observations', '')
+        
+        return f"""
+        <div class='card' style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;'>
+            <h2 style='margin-top: 0;'>🔮 RECOMENDAÇÕES DE POLÍTICAS</h2>
+            <p style='font-size: 0.9em; opacity: 0.9;'>
+                Gerado em: {recommendations.get('generated_at', 'N/A')[:16].replace('T', ' às ')} |
+                Perfil: @{recommendations.get('profile', 'N/A')} |
+                Negativos: {sentiment.get('negative_pct', 0)}%
+            </p>
+        </div>
+        
+        <div class='card'>
+            <h3>📋 Resumo das Críticas Identificadas</h3>
+            <p style='font-size: 1.1em; line-height: 1.6;'>{summary}</p>
+        </div>
+        
+        <div class='card'>
+            <h3>🚨 Áreas Problemáticas Identificadas</h3>
+            {areas_html}
+        </div>
+        
+        <div class='card'>
+            <h3>💡 Recomendações de Ações</h3>
+            {rec_html}
+        </div>
+        
+        {positive_html}
+        
+        <div class='card'>
+            <h3>📝 Observações Gerais</h3>
+            <p style='line-height: 1.6;'>{observations}</p>
+        </div>
+        
+        <div class='card' style='background: #f5f5f5; border-left: 4px solid #2196f3;'>
+            <p style='margin: 0;'>
+                <strong>ℹ️ Nota:</strong> Estas recomendações foram geradas automaticamente por IA 
+                baseadas na análise de sentimento e devem ser avaliadas por gestores antes da implementação.
+            </p>
+        </div>
+        """
 
 
 def main():
@@ -715,6 +840,49 @@ def main():
                 {'tag': 'ForaReitor', 'count': 43},
                 {'tag': 'DefendaUFF', 'count': 38}
             ]
+        },
+        'recommendations': {  # 🆕 Mock de recomendações
+            'has_recommendations': True,
+            'summary': 'Identificamos algumas áreas críticas e recomendamos ações específicas.',
+            'sentiment_data': {
+                'positive_pct': 35.0,
+                'negative_pct': 45.0,
+                'neutral_pct': 20.0
+            },
+            'critical_areas': [
+                {
+                    'area': 'Comunicação',
+                    'frequency': 'alta',
+                    'examples': ['Falta de clareza nas informações', 'Pouca transparência nas decisões']
+                },
+                {
+                    'area': 'Infraestrutura',
+                    'frequency': 'média',
+                    'examples': ['Problemas recorrentes de acesso', 'Baixa qualidade das instalações']
+                }
+            ],
+            'recommendations': [
+                {
+                    'area': 'Comunicação',
+                    'priority': 'alta',
+                    'action': 'Melhorar a clareza e frequência das comunicações oficiais.',
+                    'expected_impact': 'Aumentar a confiança e engajamento da comunidade.',
+                    'implementation_time': 'Curto prazo',
+                    'responsible': 'Equipe de Comunicação'
+                },
+                {
+                    'area': 'Infraestrutura',
+                    'priority': 'média',
+                    'action': 'Realizar manutenção e melhorias nas instalações críticas.',
+                    'expected_impact': 'Reduzir queixas e melhorar a satisfação geral.',
+                    'implementation_time': 'Médio prazo'
+                }
+            ],
+            'positive_aspects': [
+                'Aumento no engajamento em posts positivos.',
+                'Crescimento no número de seguidores.'
+            ],
+            'general_observations': 'As recomendações foram geradas com base em análises de sentimento e devem ser avaliadas no contexto institucional.'
         }
     }
     

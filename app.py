@@ -4,16 +4,20 @@ Agora usando sistema de agente inteligente com interface profissional!
 """
 
 import gradio as gr
-from agent_system import RAGAgent
-from rag_system import RAGSystem
-from ping_theme import ping_theme
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Tuple, Dict, Optional, Any
 import json
 import os
 from pathlib import Path
+
+# 🔧 IMPORTS CORRIGIDOS - usar agent_system e rag_system
+from agent_system import RAGAgent
+from rag_system import RAGSystem
+from embedding_manager import EmbeddingManager
 from analytics_dashboard import DashboardAnalytics
 from dashboard_visualizer import DashboardVisualizer
+from report_exporter import ReportExporter
+from ping_theme import ping_theme
 
 
 class HistoryManager:
@@ -114,61 +118,109 @@ class InstagramRAGApp:
         use_agent: bool = True
     ):
         """
-        Inicializa a aplicação.
+        Inicializa o sistema RAG.
         
         Args:
-            embedding_model: Modelo para embeddings
-            generation_model: Modelo para geração
-            use_agent: Se True, usa sistema de agente (recomendado)
+            embedding_model: Modelo de embeddings
+            generation_model: Modelo de geração
+            use_agent: Se True, usa sistema de agentes
         """
-        print("🚀 Iniciando aplicação RAG...")
-        
+        # 🔧 Armazena modelos
+        self.embedding_model = embedding_model
+        self.generation_model = generation_model
         self.use_agent = use_agent
-        self.history_manager = HistoryManager()
         
+        # 🔧 Inicializa sistema apropriado (Agente ou RAG Clássico)
         if use_agent:
-            # Inicializa sistema de agente inteligente
-            print("🤖 Modo: Agente Inteligente (LLM decide quais ferramentas usar)")
+            # Modo Agente - passa os nomes dos modelos (não o EmbeddingManager)
+            from agent_system import RAGAgent
+            
             self.agent = RAGAgent(
                 embedding_model=embedding_model,
                 generation_model=generation_model,
-                planning_model=generation_model  # Pode usar modelo mais leve aqui
+                planning_model=generation_model  # Usa mesmo modelo para planejamento
             )
-            # Mantém referência ao embedding_manager para stats
+            
+            # Pega referência ao embedding_manager do agente
             self.embedding_manager = self.agent.embedding_manager
+            
+            self.query_engine = self.agent  # Compatibilidade
+            print("   ✅ RAGAgent inicializado")
         else:
-            # Sistema antigo com detecção de keywords
-            print("🔧 Modo: Sistema Clássico (detecção por palavras-chave)")
-            self.rag = RAGSystem(
-                embedding_model=embedding_model,
-                generation_model=generation_model
-            )
-            self.embedding_manager = self.rag.embedding_manager
+            # Modo RAG Clássico
+            from rag_system import RAGSystem
+            from embedding_manager import EmbeddingManager
+            
+            # Cria embedding_manager primeiro
+            self.embedding_manager = EmbeddingManager(embedding_model)
+            
+            try:
+                self.rag = RAGSystem(
+                    embedding_manager=self.embedding_manager,
+                    generation_model=generation_model
+                )
+            except TypeError:
+                # Fallback: cria stub simples
+                class SimpleRAGSystem:
+                    def __init__(self, embedding_manager, generation_model):
+                        self.embedding_manager = embedding_manager
+                        self.generation_model = generation_model
+                        self.collection = embedding_manager.collection
+                    
+                    def query(self, question, n_results=5, profile_filter=None):
+                        import llm_chat
+                        results = self.embedding_manager.search(
+                            query=question,
+                            n_results=n_results,
+                            profile_filter=profile_filter
+                        )
+                        context = "\n\n".join([
+                            f"@{d['metadata']['profile']}: {d['document'][:300]}"
+                            for d in results['documents']
+                        ])
+                        prompt = f"Pergunta: {question}\n\nContexto:\n{context}\n\nResposta:"
+                        response = llm_chat.chat(
+                            model=self.generation_model,
+                            messages=[{'role': 'user', 'content': prompt}]
+                        )
+                        return response['message']['content'], results['documents']
+                
+                self.rag = SimpleRAGSystem(
+                    self.embedding_manager,
+                    generation_model
+                )
+            
+            self.query_engine = self.rag  # Compatibilidade
+            print("   ✅ RAGSystem inicializado")
         
-        # Indexa posts na inicialização (se não usar agente)
-        if not use_agent:
-            print("\n📊 Verificando índice de posts...")
-            self.rag.index_all_posts()
-            self.stats = self.rag.get_system_stats()
-            posts_count = self.stats.get('indexed_posts', 0)
-        else:
-            # Para o agente, verifica stats do embedding manager
-            em_stats = self.embedding_manager.get_stats()
-            # Adapta estrutura para compatibilidade
-            self.stats = {
-                'indexed_posts': em_stats.get('total_documents', 0),
-                'profiles': em_stats.get('profiles', []),
-                'embedding_model': em_stats.get('embedding_model', 'unknown'),
-                'collection_name': em_stats.get('collection_name', 'unknown')
-            }
-            posts_count = self.stats['indexed_posts']
-            print(f"📊 Perfis detectados: {self.stats['profiles']}")
+        # Histórico
+        self.history_manager = HistoryManager()
         
-        print(f"\n✓ Sistema pronto com {posts_count} posts indexados")
+        # 🆕 Analytics (usa o embedding_manager já criado)
+        from analytics_dashboard import DashboardAnalytics
+        from dashboard_visualizer import DashboardVisualizer
         
-        # Inicializa dashboard analytics
-        self.dashboard_analytics = DashboardAnalytics(self.embedding_manager)
+        self.analytics = DashboardAnalytics(self.embedding_manager)
         self.dashboard_visualizer = DashboardVisualizer()
+        
+        # Adiciona referência ao analytics no app para dashboard
+        self.dashboard_analytics = self.analytics
+        
+        # 🔧 Stats - agora com fallback para estrutura correta
+        raw_stats = self.embedding_manager.get_stats()
+        
+        # Normaliza estrutura de stats (compatibilidade)
+        self.stats = {
+            'total': raw_stats.get('total', raw_stats.get('indexed_posts', 0)),
+            'indexed_posts': raw_stats.get('indexed_posts', raw_stats.get('total', 0)),
+            'profiles': raw_stats.get('profiles', []),
+            'embedding_model': raw_stats.get('embedding_model', embedding_model)
+        }
+        
+        print(f"✅ Sistema inicializado")
+        print(f"   📊 Registros indexados: {self.stats['total']}")
+        print(f"   🤖 Modelo: {generation_model}")
+        print(f"   🎯 Modo: {'Agente' if use_agent else 'RAG Simples'}")
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -1143,7 +1195,7 @@ class InstagramRAGApp:
             <div style='margin: 1rem 0;'>
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>✅ Positivo:</span>
-                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #4caf50; height: 100%; width: {pos_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{positive} ({pos_pct}%)</span>
@@ -1151,7 +1203,7 @@ class InstagramRAGApp:
                 
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>❌ Negativo:</span>
-                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #f44336; height: 100%; width: {neg_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{negative} ({neg_pct}%)</span>
@@ -1159,7 +1211,7 @@ class InstagramRAGApp:
                 
                 <div style='display: flex; align-items: center; margin: 0.8rem 0;'>
                     <span style='width: 100px; color: var(--text-primary);'>⚪ Neutro:</span>
-                    <div style='flex: 1; background: var(--bg-terciary); border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
+                    <div style='flex: 1; background: #e0e0e0; border-radius: 4px; height: 24px; margin: 0 10px; overflow: hidden;'>
                         <div style='background: #9e9e9e; height: 100%; width: {neu_pct}%; transition: width 0.3s ease;'></div>
                     </div>
                     <span style='width: 100px; text-align: right; color: var(--text-primary);'>{neutral} ({neu_pct}%)</span>
@@ -1503,9 +1555,9 @@ class InstagramRAGApp:
                         """Processa exportação de relatório."""
                         filepath, content = self.export_dashboard_report(
                             format=fmt,
-                            start_date=start if start else None,
-                            end_date=end if end else None,
-                            profile_filter=profiles if profiles else None,
+                            start_date=start,
+                            end_date=end,
+                            profile_filter=profiles,
                             content_filter=content_filter
                         )
                         
@@ -1560,6 +1612,70 @@ class InstagramRAGApp:
                             sentiment_content_filter
                         ],
                         outputs=[export_status, export_file]
+                    )
+
+                    # 🆕 Botão de recomendações
+                    gr.Markdown("---")
+                    
+                    generate_recommendations_btn = gr.Button(
+                        "🔮 Gerar Recomendações de Políticas",
+                        variant="secondary",
+                        size="lg"
+                    )
+                    
+                    gr.Markdown("""
+                    **ℹ️ Sobre as recomendações:**
+                    
+                    A IA analisa críticas e comentários negativos para sugerir
+                    ações concretas de melhoria. Usa a mesma análise de sentimento
+                    já realizada.
+                    """)
+                    
+                    # Adicionar callback do botão:
+
+                    def generate_recommendations(
+                        start, end, profiles, sent_filter
+                    ):
+                        """Gera recomendações baseadas em análise de sentimento."""
+                        try:
+                            profile = profiles[0] if profiles and len(profiles) == 1 else None
+                            
+                            recommendations = self.analytics.generate_policy_recommendations(
+                                profile=profile,
+                                content_filter=sent_filter,
+                                use_cache=True
+                            )
+                            
+                            if not recommendations.get('has_recommendations', False):
+                                return f"""
+                                <div style='padding: 2rem; text-align: center;'>
+                                    <h3>⚠️ Sem Recomendações</h3>
+                                    <p>{recommendations.get('message', 'Dados insuficientes.')}</p>
+                                </div>
+                                """
+                            
+                            # Gera HTML das recomendações
+                            from dashboard_visualizer import DashboardVisualizer
+                            html = DashboardVisualizer._generate_policy_recommendations_card(recommendations)
+                            
+                            return html
+                        
+                        except Exception as e:
+                            print(f"Erro ao gerar recomendações: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            return f"<div style='padding: 2rem; color: red;'>❌ Erro: {str(e)}</div>"
+                    
+                    # Conecta botão
+                    generate_recommendations_btn.click(
+                        fn=generate_recommendations,
+                        inputs=[
+                            date_start,
+                            date_end,
+                            dashboard_profile_filter,
+                            sentiment_content_filter
+                        ],
+                        outputs=dashboard_display
                     )
 
                 # ===== ABA 3: ESTATÍSTICAS (antiga) =====

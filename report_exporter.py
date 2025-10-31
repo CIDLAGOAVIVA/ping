@@ -144,6 +144,56 @@ class ReportExporter:
             )[:10]:
                 writer.writerow([publisher, count])
         
+        # 🆕 Recomendações de Políticas
+        recommendations = metrics.get('policy_recommendations', {})
+        if recommendations.get('has_recommendations', False):
+            writer.writerow(['=== RECOMENDAÇÕES DE POLÍTICAS ==='])
+            writer.writerow(['Gerado em:', recommendations.get('generated_at', 'N/A')])
+            writer.writerow(['Perfil:', recommendations.get('profile', 'N/A')])
+            writer.writerow([])
+            
+            writer.writerow(['RESUMO DAS CRÍTICAS:'])
+            writer.writerow([recommendations.get('summary', '')])
+            writer.writerow([])
+            
+            # Áreas críticas
+            writer.writerow(['ÁREAS PROBLEMÁTICAS IDENTIFICADAS:'])
+            writer.writerow(['Área', 'Frequência', 'Exemplos'])
+            for area in recommendations.get('critical_areas', []):
+                examples = ' | '.join(area.get('examples', [])[:2])
+                writer.writerow([
+                    area.get('area', ''),
+                    area.get('frequency', ''),
+                    examples
+                ])
+            writer.writerow([])
+            
+            # Recomendações
+            writer.writerow(['RECOMENDAÇÕES DE AÇÕES:'])
+            writer.writerow(['Prioridade', 'Área', 'Ação', 'Impacto Esperado', 'Prazo', 'Responsável'])
+            for rec in recommendations.get('recommendations', []):
+                writer.writerow([
+                    rec.get('priority', ''),
+                    rec.get('area', ''),
+                    rec.get('action', ''),
+                    rec.get('expected_impact', ''),
+                    rec.get('implementation_time', ''),
+                    rec.get('responsible', '')
+                ])
+            writer.writerow([])
+            
+            # Aspectos positivos
+            if recommendations.get('positive_aspects'):
+                writer.writerow(['ASPECTOS POSITIVOS A MANTER:'])
+                for aspect in recommendations.get('positive_aspects', []):
+                    writer.writerow(['•', aspect])
+                writer.writerow([])
+            
+            # Observações gerais
+            writer.writerow(['OBSERVAÇÕES GERAIS:'])
+            writer.writerow([recommendations.get('general_observations', '')])
+            writer.writerow([])
+        
         content = output.getvalue()
         output.close()
         
@@ -373,6 +423,87 @@ class ReportExporter:
             
             elements.append(hashtags_table)
         
+        # 🆕 Recomendações de Políticas
+        recommendations = metrics.get('policy_recommendations', {})
+        if recommendations.get('has_recommendations', False):
+            elements.append(PageBreak())
+            elements.append(Paragraph("RECOMENDAÇÕES DE POLÍTICAS", heading_style))
+            
+            # Resumo
+            summary_text = f"""
+            <b>Resumo das Críticas:</b><br/>
+            {recommendations.get('summary', 'N/A')}
+            """
+            elements.append(Paragraph(summary_text, styles['Normal']))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Áreas Críticas
+            elements.append(Paragraph("Áreas Problemáticas Identificadas", styles['Heading3']))
+            
+            areas_data = [['Área', 'Frequência', 'Exemplos']]
+            for area in recommendations.get('critical_areas', []):
+                examples = ' | '.join(area.get('examples', [])[:2])
+                areas_data.append([
+                    area.get('area', ''),
+                    area.get('frequency', '').upper(),
+                    examples[:100]
+                ])
+            
+            areas_table = Table(areas_data, colWidths=[1.5*inch, 1*inch, 3*inch])
+            areas_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f44336')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ffcdd2')),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            elements.append(areas_table)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            # Recomendações
+            elements.append(PageBreak())
+            elements.append(Paragraph("Ações Recomendadas", styles['Heading3']))
+            
+            rec_data = [['Prioridade', 'Área', 'Ação', 'Impacto', 'Prazo']]
+            for rec in recommendations.get('recommendations', []):
+                priority = rec.get('priority', '').upper()
+                
+                rec_data.append([
+                    priority,
+                    rec.get('area', '')[:30],
+                    rec.get('action', '')[:80],
+                    rec.get('expected_impact', '')[:60],
+                    rec.get('implementation_time', '')
+                ])
+            
+            rec_table = Table(rec_data, colWidths=[0.8*inch, 1.2*inch, 2*inch, 1.5*inch, 0.8*inch])
+            rec_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4caf50')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#c8e6c9')),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            
+            elements.append(rec_table)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            # Aspectos positivos
+            if recommendations.get('positive_aspects'):
+                elements.append(Paragraph("Aspectos Positivos a Manter", styles['Heading3']))
+                positive_text = "<br/>".join([f"• {asp}" for asp in recommendations.get('positive_aspects', [])])
+                elements.append(Paragraph(positive_text, styles['Normal']))
+                elements.append(Spacer(1, 0.2*inch))
+        
         # Rodapé
         elements.append(Spacer(1, 0.5*inch))
         footer = Paragraph(
@@ -453,6 +584,47 @@ def main():
                 'G1': 30,
                 'Folha': 25
             }
+        },
+        'policy_recommendations': {
+            'has_recommendations': True,
+            'generated_at': '2023-10-10 10:00:00',
+            'profile': 'dceuff',
+            'summary': 'Críticas construtivas sobre a gestão de conteúdo.',
+            'critical_areas': [
+                {
+                    'area': 'Falta de interatividade',
+                    'frequency': 'Alta',
+                    'examples': ['Post sem enquetes', 'Stories sem perguntas']
+                },
+                {
+                    'area': 'Baixo engajamento em posts',
+                    'frequency': 'Média',
+                    'examples': ['Posts com menos de 10 curtidas']
+                }
+            ],
+            'recommendations': [
+                {
+                    'priority': 'Alta',
+                    'area': 'Conteúdo',
+                    'action': 'Criar enquetes nos stories',
+                    'expected_impact': 'Aumentar a interatividade',
+                    'implementation_time': 'Imediato',
+                    'responsible': 'Equipe de Conteúdo'
+                },
+                {
+                    'priority': 'Média',
+                    'area': 'Postagens',
+                    'action': 'Revisar horários de postagem',
+                    'expected_impact': 'Aumentar o alcance',
+                    'implementation_time': '1 semana',
+                    'responsible': 'Social Media'
+                }
+            ],
+            'positive_aspects': [
+                'Bom uso de imagens',
+                'Legendas criativas'
+            ],
+            'general_observations': 'Continuar o bom trabalho!'
         }
     }
     
@@ -469,6 +641,83 @@ def main():
     with open('test_relatorio.pdf', 'wb') as f:
         f.write(pdf_bytes)
     print("✅ PDF gerado: test_relatorio.pdf")
+    
+    # 🆕 Mock de recomendações
+    mock_metrics['policy_recommendations'] = {
+        'has_recommendations': True,
+        'generated_at': '2025-10-27T14:30:00',
+        'profile': 'dceuff',
+        'content_filter': 'both',
+        'sentiment_data': {
+            'total_analyzed': 100,
+            'negative_pct': 45.0,
+            'trend': 'negative'
+        },
+        'summary': 'As principais críticas giram em torno de demora nas respostas institucionais, falta de transparência e problemas estruturais no HUAP.',
+        'critical_areas': [
+            {
+                'area': 'Comunicação Institucional',
+                'frequency': 'alta',
+                'examples': [
+                    'Falta de resposta aos questionamentos',
+                    'Informações desencontradas'
+                ]
+            },
+            {
+                'area': 'Infraestrutura',
+                'frequency': 'média',
+                'examples': [
+                    'HUAP sem condições adequadas',
+                    'Falta de equipamentos'
+                ]
+            }
+        ],
+        'recommendations': [
+            {
+                'priority': 'alta',
+                'area': 'Comunicação',
+                'action': 'Implementar canal de respostas em até 48h',
+                'expected_impact': 'Redução de 40% nas reclamações sobre falta de resposta',
+                'implementation_time': 'curto prazo',
+                'responsible': 'Assessoria de Comunicação'
+            },
+            {
+                'priority': 'alta',
+                'area': 'Transparência',
+                'action': 'Criar dashboard público de acompanhamento de demandas',
+                'expected_impact': 'Aumento de confiança e engajamento positivo',
+                'implementation_time': 'médio prazo',
+                'responsible': 'Diretoria de TI + Comunicação'
+            },
+            {
+                'priority': 'média',
+                'area': 'HUAP',
+                'action': 'Divulgar calendário de melhorias e investimentos',
+                'expected_impact': 'Redução de especulações negativas',
+                'implementation_time': 'curto prazo',
+                'responsible': 'Administração do HUAP'
+            }
+        ],
+        'positive_aspects': [
+            'Diálogo com movimentos estudantis',
+            'Transparência em eventos públicos'
+        ],
+        'general_observations': 'A gestão atual tem boa receptividade em eventos presenciais, mas precisa melhorar a comunicação digital e o tempo de resposta a questionamentos.'
+    }
+    
+    # Testa CSV com novas recomendações
+    print("\n📄 Gerando CSV com Recomendações...")
+    csv_content = ReportExporter.export_to_csv(mock_metrics)
+    with open('test_relatorio_recomendacoes.csv', 'w', encoding='utf-8') as f:
+        f.write(csv_content)
+    print("✅ CSV gerado: test_relatorio_recomendacoes.csv")
+    
+    # Testa PDF com novas recomendações
+    print("\n📕 Gerando PDF com Recomendações...")
+    pdf_bytes = ReportExporter.export_to_pdf(mock_metrics)
+    with open('test_relatorio_recomendacoes.pdf', 'wb') as f:
+        f.write(pdf_bytes)
+    print("✅ PDF gerado: test_relatorio_recomendacoes.pdf")
 
 
 if __name__ == '__main__':
