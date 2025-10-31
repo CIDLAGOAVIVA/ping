@@ -774,7 +774,9 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                 'total_topics': 0,
                 'total_posts_analyzed': 0,
                 'topics': [],
-                'top_hashtags': []
+                'top_hashtags': [],
+                'total_unique_hashtags': 0,
+                'total_hashtag_occurrences': 0
             }
         
         # Palavras comuns a ignorar (stopwords)
@@ -810,46 +812,55 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                     if len(word) >= 4 and word not in stopwords:
                         term_counter[word] = term_counter.get(word, 0) + 1
             
-            # Analisa hashtags
+            # 🔧 MELHORADO: Analisa hashtags com validação
             hashtags = post.get('hashtags', [])
             if isinstance(hashtags, list):
                 for tag in hashtags:
-                    tag_clean = tag.lower().replace('#', '')
-                    if len(tag_clean) >= 3:
-                        hashtag_counter[tag_clean] = hashtag_counter.get(tag_clean, 0) + 1
+                    # Remove # e limpa
+                    tag_clean = tag.lower().replace('#', '').strip()
+                    
+                    # 🆕 VALIDAÇÃO: Apenas letras, números e acentos
+                    tag_valid = ''.join(
+                        c for c in tag_clean 
+                        if c.isalnum() or c in ['á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç', 'ü', 'ñ']
+                    )
+                    
+                    # Ignora hashtags muito curtas ou apenas números
+                    if len(tag_valid) >= 3 and not tag_valid.isdigit():
+                        # Verifica se tem pelo menos uma letra
+                        if any(c.isalpha() for c in tag_valid):
+                            hashtag_counter[tag_valid] = hashtag_counter.get(tag_valid, 0) + 1
         
         # Top termos (ordenados por frequência)
         top_terms = sorted(
             term_counter.items(),
             key=lambda x: x[1],
             reverse=True
-        )[:20]
+        )[:10]  # 🔧 Top 10 termos
         
-        # Top hashtags
+        # 🔧 CORRIGIDO: Top 5 hashtags apenas
         top_hashtags = sorted(
             hashtag_counter.items(),
             key=lambda x: x[1],
             reverse=True
-        )[:15]
+        )[:5]  # 🆕 Apenas Top 5
         
-        # Calcula "indicador de crescimento" (simulado baseado em frequência relativa)
+        # Calcula "indicador de crescimento"
         total_posts = len(posts)
         topics = []
         for term, count in top_terms:
             percentage = (count / total_posts) * 100
             
-            # Indicador simplificado: quanto maior a frequência, maior o "crescimento"
-            # Em uma implementação real, compararia com período anterior
             if percentage >= 5.0:
-                growth = 75  # Alta
+                growth = 75
             elif percentage >= 3.0:
-                growth = 50  # Média-alta
+                growth = 50
             elif percentage >= 2.0:
-                growth = 30  # Média
+                growth = 30
             elif percentage >= 1.0:
-                growth = 10  # Baixa
+                growth = 10
             else:
-                growth = 0   # Estável
+                growth = 0
             
             topics.append({
                 'term': term,
@@ -858,17 +869,28 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                 'growth_indicator': growth
             })
         
-        # Formata hashtags
+        # 🆕 Formata hashtags
         hashtags_list = [
-            {'tag': tag, 'count': count}
+            {
+                'tag': tag,
+                'count': count,
+                'percentage': round((count / total_posts) * 100, 1),
+                'posts_with_tag': count
+            }
             for tag, count in top_hashtags
         ]
+        
+        # 🔧 DEBUG: Print para verificar
+        print(f"DEBUG: Total hashtags únicas: {len(hashtag_counter)}")
+        print(f"DEBUG: Top 5 hashtags: {hashtags_list}")
         
         return {
             'total_topics': len(topics),
             'total_posts_analyzed': total_posts,
             'topics': topics,
-            'top_hashtags': hashtags_list
+            'top_hashtags': hashtags_list,  # 🆕 Agora com apenas 5
+            'total_unique_hashtags': len(hashtag_counter),
+            'total_hashtag_occurrences': sum(hashtag_counter.values())
         }
     
     def invalidate_cache(

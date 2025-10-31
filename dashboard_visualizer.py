@@ -278,6 +278,8 @@ class DashboardVisualizer:
         
         topics = emerging_topics_data.get('topics', [])
         total_analyzed = emerging_topics_data.get('total_posts_analyzed', 0)
+        total_unique_hashtags = emerging_topics_data.get('total_unique_hashtags', 0)
+        total_hashtag_occurrences = emerging_topics_data.get('total_hashtag_occurrences', 0)
         
         # Gera lista de tópicos
         topics_html = ""
@@ -342,35 +344,75 @@ class DashboardVisualizer:
             </div>
             """
         
-        # Hashtags mais usadas
+        # 🆕 SIMPLIFICADO: Top 5 Hashtags com design destacado
         hashtags_html = ""
         top_hashtags = emerging_topics_data.get('top_hashtags', [])
-        if top_hashtags:
-            hashtags_html = """
-            <div style='margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border-primary);'>
-                <h4 style='margin: 0 0 1rem 0; color: var(--text-primary);'>🏷️ Hashtags em Destaque</h4>
-                <div style='display: flex; flex-wrap: wrap; gap: 0.75rem;'>
+        
+        if top_hashtags and len(top_hashtags) > 0:
+            avg_hashtags_per_post = round(total_hashtag_occurrences / total_analyzed, 2) if total_analyzed > 0 else 0
+            
+            hashtags_html = f"""
+            <div style='margin-top: 2rem; padding-top: 2rem; border-top: 2px solid var(--border-primary);'>
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;'>
+                    <h4 style='margin: 0; color: var(--text-primary); font-size: 1.3rem;'>🏷️ Top 5 Hashtags</h4>
+                    <div style='text-align: right; font-size: 0.85rem; color: var(--text-secondary);'>
+                        <div><strong>{total_unique_hashtags}</strong> hashtags únicas</div>
+                        <div><strong>{avg_hashtags_per_post}</strong> por post (média)</div>
+                    </div>
+                </div>
+                
+                <!-- Top 5 Hashtags em Cards Grandes -->
+                <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;'>
             """
             
-            for hashtag in top_hashtags[:15]:
+            for i, hashtag in enumerate(top_hashtags, 1):
                 tag = hashtag['tag']
                 count = hashtag['count']
+                percentage = hashtag.get('percentage', 0)
                 
-                # Tamanho proporcional à frequência
-                font_size = min(1.2 + (count / 10), 2.0)
+                # Cor do ranking (gradientes bonitos)
+                if i == 1:
+                    rank_color = '#ffd700'  # Ouro
+                    rank_gradient = 'linear-gradient(135deg, #ffd700 0%, #ffed4e 100%)'
+                    rank_emoji = '🥇'
+                elif i == 2:
+                    rank_color = '#c0c0c0'  # Prata
+                    rank_gradient = 'linear-gradient(135deg, #c0c0c0 0%, #e0e0e0 100%)'
+                    rank_emoji = '🥈'
+                elif i == 3:
+                    rank_color = '#cd7f32'  # Bronze
+                    rank_gradient = 'linear-gradient(135deg, #cd7f32 0%, #d4a574 100%)'
+                    rank_emoji = '🥉'
+                elif i == 4:
+                    rank_color = '#667eea'
+                    rank_gradient = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    rank_emoji = '#4'
+                else:
+                    rank_color = '#2196f3'
+                    rank_gradient = 'linear-gradient(135deg, #2196f3 0%, #1976d2 100%)'
+                    rank_emoji = '#5'
                 
                 hashtags_html += f"""
-                <span style='
-                    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+                <div style='
+                    background: {rank_gradient};
                     color: white;
-                    padding: 0.5rem 1rem;
-                    border-radius: 20px;
-                    font-size: {font_size}rem;
-                    font-weight: 600;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    padding: 1.5rem;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                    text-align: center;
+                    transition: transform 0.3s ease;
                 '>
-                    #{tag} <span style='opacity: 0.8; font-size: 0.75rem;'>({count})</span>
-                </span>
+                    <div style='font-size: 2.5rem; margin-bottom: 0.5rem;'>{rank_emoji}</div>
+                    <div style='font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem;'>
+                        #{tag}
+                    </div>
+                    <div style='font-size: 1.5rem; font-weight: 600; margin-bottom: 0.25rem;'>
+                        {count}
+                    </div>
+                    <div style='font-size: 0.85rem; opacity: 0.9;'>
+                        menções ({percentage}%)
+                    </div>
+                </div>
                 """
             
             hashtags_html += """
