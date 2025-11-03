@@ -1874,82 +1874,84 @@ class InstagramRAGApp:
                                 outputs=history_html
                             )
                 
-                # ===== ABA 4: INGESTÃO DE DADOS (NOVA) =====
+                # ===== ABA 4: INGESTÃO DE DADOS (ATUALIZADA) =====
                 with gr.TabItem("📥 Ingestão de Dados"):
                     gr.HTML("""
                     <div style='padding: 2rem;'>
-                        <h2 style='color: #667eea;'>📥 Carregar Novos Dados</h2>
+                        <h2 style='color: #667eea;'>📥 Gerenciar Dados</h2>
                         <p style='color: #666; font-size: 0.95rem;'>
-                            Adicione novos dados de qualquer fonte para análise pela IA.
-                            Os dados serão indexados automaticamente no banco vetorial.
+                            Adicione novos dados ou gerencie fontes existentes no banco vetorial.
                         </p>
                     </div>
                     """)
                     
-                    with gr.Row():
-                        with gr.Column(scale=7):
-                            # Upload de arquivo
-                            file_upload = gr.File(
-                                label="📁 Selecione o Arquivo",
-                                file_types=['.json', '.csv', '.txt', '.pdf'],
-                                type="filepath"
-                            )
-                            
-                            # Configurações
+                    with gr.Tabs():
+                        # Sub-aba: Upload
+                        with gr.TabItem("📤 Upload de Novos Dados"):
                             with gr.Row():
-                                profile_name_input = gr.Textbox(
-                                    label="Nome da Fonte/Perfil",
-                                    placeholder="Ex: pesquisa_alunos, relatorio_2024",
-                                    value="custom_data"
-                                )
-                                text_column_input = gr.Textbox(
-                                    label="Coluna de Texto (CSV)",
-                                    placeholder="Nome da coluna com texto principal",
-                                    value="text"
-                                )
-                            
-                            auto_index_checkbox = gr.Checkbox(
-                                label="✅ Indexar automaticamente no ChromaDB",
-                                value=True
-                            )
-                            
-                            process_btn = gr.Button(
-                                "🚀 Processar e Indexar",
-                                variant="primary",
-                                size="lg"
-                            )
-                            
-                            # Status
-                            status_output = gr.HTML()
-                            
-                            # Preview
-                            preview_output = gr.HTML()
-                        
-                        # Painel lateral com informações
-                        with gr.Column(scale=3):
-                            gr.Markdown("### 📋 Formatos Suportados")
-                            gr.Markdown("""
-                            - **JSON**: Posts, documentos, arrays
-                            - **CSV**: Tabelas com dados estruturados
-                            - **TXT**: Texto simples (divide por parágrafos)
-                            - **PDF**: Extração de texto por página
-                            
-                            **Limite:** 50MB por arquivo
-                            """)
-                            
-                            gr.Markdown("### 💡 Dicas")
-                            gr.Markdown("""
-                            1. **JSON**: Pode ser lista ou objeto único
-                            2. **CSV**: Especifique a coluna com texto principal
-                            3. **TXT**: Será dividido por parágrafos vazios
-                            4. **PDF**: Cada página vira um documento
-                            
-                            Após indexar, os dados ficam disponíveis no chat!
-                            """)
-                            
-                            gr.Markdown("### ⚙️ Estrutura Esperada (JSON)")
-                            gr.Code(
-                                value='''[
+                                with gr.Column(scale=7):
+                                    # Upload de arquivo
+                                    file_upload = gr.File(
+                                        label="📁 Selecione o Arquivo",
+                                        file_types=['.json', '.csv', '.txt', '.pdf'],
+                                        type="filepath"
+                                    )
+                                    
+                                    # Configurações
+                                    with gr.Row():
+                                        profile_name_input = gr.Textbox(
+                                            label="Nome da Fonte/Perfil",
+                                            placeholder="Ex: pesquisa_alunos, relatorio_2024",
+                                            value="custom_data"
+                                        )
+                                        text_column_input = gr.Textbox(
+                                            label="Coluna de Texto (CSV)",
+                                            placeholder="Nome da coluna com texto principal",
+                                            value="text"
+                                        )
+                                    
+                                    auto_index_checkbox = gr.Checkbox(
+                                        label="✅ Indexar automaticamente no ChromaDB",
+                                        value=True
+                                    )
+                                    
+                                    process_btn = gr.Button(
+                                        "🚀 Processar e Indexar",
+                                        variant="primary",
+                                        size="lg"
+                                    )
+                                    
+                                    # Status
+                                    status_output = gr.HTML()
+                                    
+                                    # Preview
+                                    preview_output = gr.HTML()
+                                
+                                # Painel lateral com informações
+                                with gr.Column(scale=3):
+                                    gr.Markdown("### 📋 Formatos Suportados")
+                                    gr.Markdown("""
+                                    - **JSON**: Posts, documentos, arrays
+                                    - **CSV**: Tabelas com dados estruturados
+                                    - **TXT**: Texto simples (divide por parágrafos)
+                                    - **PDF**: Extração de texto por página
+                                    
+                                    **Limite:** 50MB por arquivo
+                                    """)
+                                    
+                                    gr.Markdown("### 💡 Dicas")
+                                    gr.Markdown("""
+                                    1. **JSON**: Pode ser lista ou objeto único
+                                    2. **CSV**: Especifique a coluna com texto principal
+                                    3. **TXT**: Será dividido por parágrafos vazios
+                                    4. **PDF**: Cada página vira um documento
+                                    
+                                    Após indexar, os dados ficam disponíveis no chat!
+                                    """)
+                                    
+                                    gr.Markdown("### ⚙️ Estrutura Esperada (JSON)")
+                                    gr.Code(
+                                        value='''[
   {
     "text": "Conteúdo...",
     "title": "Título",
@@ -1957,20 +1959,89 @@ class InstagramRAGApp:
     "metadata": {...}
   }
 ]''',
-                                language="json"
+                                        language="json"
+                                    )
+                            
+                            # Eventos
+                            process_btn.click(
+                                self.process_upload,
+                                inputs=[
+                                    file_upload,
+                                    profile_name_input,
+                                    text_column_input,
+                                    auto_index_checkbox
+                                ],
+                                outputs=[status_output, preview_output]
                             )
-                    
-                    # Eventos
-                    process_btn.click(
-                        self.process_upload,
-                        inputs=[
-                            file_upload,
-                            profile_name_input,
-                            text_column_input,
-                            auto_index_checkbox
-                        ],
-                        outputs=[status_output, preview_output]
-                    )
+                        
+                        # 🆕 Sub-aba: Fontes Existentes
+                        with gr.TabItem("📚 Fontes Indexadas"):
+                            with gr.Row():
+                                with gr.Column(scale=8):
+                                    sources_display = gr.HTML(value=self.generate_sources_html())
+                                
+                                with gr.Column(scale=2):
+                                    gr.Markdown("### 🔧 Ações")
+                                    
+                                    refresh_sources_btn = gr.Button(
+                                        "🔄 Atualizar",
+                                        variant="secondary",
+                                        size="lg"
+                                    )
+                                    
+                                    gr.Markdown("---")
+                                    gr.Markdown("### 🗑️ Remover Fonte")
+                                    
+                                    # Dropdown com fontes disponíveis
+                                    def get_sources_list():
+                                        data = self.get_chromadb_sources()
+                                        if data['sources']:
+                                            return ["Selecione..."] + list(data['sources'].keys())
+                                        return ["Selecione..."]
+                                    
+                                    source_to_delete = gr.Dropdown(
+                                        choices=get_sources_list(),
+                                        value="Selecione...",
+                                        label="Escolha a fonte",
+                                        interactive=True
+                                    )
+                                    
+                                    delete_btn = gr.Button(
+                                        "🗑️ Remover Fonte",
+                                        variant="stop",
+                                        size="lg"
+                                    )
+                                    
+                                    delete_status = gr.HTML()
+                                    
+                                    gr.Markdown("""
+                                    ---
+                                    **⚠️ Atenção:**
+                                    
+                                    Remover uma fonte é **irreversível**!
+                                    Todos os documentos dessa fonte serão deletados do ChromaDB.
+                                    """)
+                            
+                            # Eventos
+                            refresh_sources_btn.click(
+                                lambda: (
+                                    self.generate_sources_html(),
+                                    gr.update(choices=get_sources_list())
+                                ),
+                                outputs=[sources_display, source_to_delete]
+                            )
+                            
+                            delete_btn.click(
+                                self.delete_source,
+                                inputs=[source_to_delete],
+                                outputs=[delete_status, sources_display]
+                            ).then(
+                                lambda: (
+                                    gr.update(choices=get_sources_list(), value="Selecione..."),
+                                    ""
+                                ),
+                                outputs=[source_to_delete, delete_status]
+                            )
                 
                 # ===== ABA 5: DOCUMENTAÇÃO =====
                 with gr.TabItem("📖 Documentação"):
@@ -2103,51 +2174,302 @@ class InstagramRAGApp:
         app = self.create_interface()
         app.launch(**kwargs)
 
+    def get_chromadb_sources(self) -> Dict[str, Any]:
+        """
+        Retorna informações sobre as fontes/arquivos no ChromaDB.
+        
+        Returns:
+            Dict com estatísticas por fonte
+        """
+        try:
+            # Busca todos os documentos
+            if self.use_agent:
+                collection = self.agent.embedding_manager.collection
+            else:
+                collection = self.embedding_manager.collection
+            
+            # Pega todos os documentos
+            results = collection.get(
+                limit=100000,
+                include=['metadatas']
+            )
+            
+            if not results['ids']:
+                return {
+                    'total': 0,
+                    'sources': {},
+                    'error': None
+                }
+            
+            # Agrupa por fonte/perfil
+            sources = {}
+            for metadata in results['metadatas']:
+                profile = metadata.get('profile', 'unknown')
+                content_type = metadata.get('content_type', 'instagram_post')
+                
+                if profile not in sources:
+                    sources[profile] = {
+                        'name': profile,
+                        'count': 0,
+                        'types': {},
+                        'oldest': None,
+                        'newest': None
+                    }
+                
+                sources[profile]['count'] += 1
+                sources[profile]['types'][content_type] = sources[profile]['types'].get(content_type, 0) + 1
+                
+                # Atualiza datas
+                timestamp = metadata.get('timestamp')
+                if timestamp:
+                    try:
+                        from dateutil import parser as date_parser
+                        dt = date_parser.parse(timestamp)
+                        
+                        if sources[profile]['oldest'] is None or dt < sources[profile]['oldest']:
+                            sources[profile]['oldest'] = dt
+                        
+                        if sources[profile]['newest'] is None or dt > sources[profile]['newest']:
+                            sources[profile]['newest'] = dt
+                    except:
+                        pass
+            
+            return {
+                'total': len(results['ids']),
+                'sources': sources,
+                'error': None
+            }
+        
+        except Exception as e:
+            return {
+                'total': 0,
+                'sources': {},
+                'error': str(e)
+            }
 
-def main():
-    """Função principal."""
-    import argparse
+    def generate_sources_html(self) -> str:
+        """
+        Gera HTML com lista de fontes/arquivos no ChromaDB.
+        
+        Returns:
+            HTML formatado
+        """
+        data = self.get_chromadb_sources()
+        
+        if data['error']:
+            return f"""
+            <div style='padding: 2rem; text-align: center; color: red;'>
+                <h3>❌ Erro ao carregar fontes</h3>
+                <p>{data['error']}</p>
+            </div>
+            """
+        
+        if data['total'] == 0:
+            return """
+            <div style='padding: 2rem; text-align: center; color: var(--text-secondary);'>
+                <h3>📭 Nenhum dado indexado</h3>
+                <p>Faça upload de arquivos para começar!</p>
+            </div>
+            """
+        
+        html = f"""
+        <div style='padding: 2rem; background: var(--bg-primary); color: var(--text-primary);'>
+            <div style='margin-bottom: 2rem;'>
+                <h2 style='margin: 0 0 0.5rem 0; color: var(--text-primary);'>📚 Fontes Indexadas</h2>
+                <p style='margin: 0; color: var(--text-secondary);'>Total: <strong>{data['total']:,}</strong> documentos</p>
+            </div>
+            
+            <div style='display: grid; gap: 1rem;'>
+        """
+        
+        # Cards por fonte
+        for source_name, source_data in sorted(data['sources'].items(), key=lambda x: x[1]['count'], reverse=True):
+            # Formata datas
+            oldest = source_data['oldest'].strftime('%d/%m/%Y') if source_data['oldest'] else "Desconhecida"
+            newest = source_data['newest'].strftime('%d/%m/%Y') if source_data['newest'] else "Desconhecida"
+            
+            # Tipos de conteúdo
+            types_html = ""
+            for content_type, count in source_data['types'].items():
+                icon = {
+                    'instagram_post': '📷',
+                    'news': '📰',
+                    'custom': '📄'
+                }.get(content_type, '📄')
+                
+                types_html += f"""
+                <span style='
+                    background: var(--bg-tertiary);
+                    padding: 0.3rem 0.8rem;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
+                    margin-right: 0.5rem;
+                    display: inline-block;
+                '>
+                    {icon} {content_type}: {count}
+                </span>
+                """
+            
+            html += f"""
+            <div style='
+                background: var(--bg-secondary);
+                border: 1px solid var(--border-primary);
+                border-radius: 12px;
+                padding: 1.5rem;
+                box-shadow: var(--shadow-sm);
+                transition: all 0.3s ease;
+            ' onmouseover="this.style.boxShadow='var(--shadow-md)'; this.style.transform='translateY(-2px)'" 
+               onmouseout="this.style.boxShadow='var(--shadow-sm)'; this.style.transform='translateY(0)'">
+                
+                <div style='display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;'>
+                    <div>
+                        <h3 style='margin: 0; color: var(--primary);'>@{source_name}</h3>
+                        <p style='margin: 0.5rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;'>
+                            📊 {source_data['count']:,} documentos
+                        </p>
+                    </div>
+                    <span style='
+                        background: linear-gradient(135deg, #667eea, #764ba2);
+                        color: white;
+                        padding: 0.5rem 1rem;
+                        border-radius: 20px;
+                        font-weight: 600;
+                        font-size: 0.9rem;
+                    '>
+                        {((source_data['count'] / data['total']) * 100):.1f}%
+                    </span>
+                </div>
+                
+                <div style='margin: 1rem 0;'>
+                    {types_html}
+                </div>
+                
+                <div style='
+                    display: flex;
+                    gap: 2rem;
+                    margin-top: 1rem;
+                    padding-top: 1rem;
+                    border-top: 1px solid var(--border-primary);
+                    font-size: 0.85rem;
+                    color: var(--text-secondary);
+                '>
+                    <div>
+                        <strong>📅 Mais antigo:</strong> {oldest}
+                    </div>
+                    <div>
+                        <strong>🆕 Mais recente:</strong> {newest}
+                    </div>
+                </div>
+            </div>
+            """
+        
+        html += """
+            </div>
+        </div>
+        """
+        
+        return html
+
+    def delete_source(self, source_name: str) -> Tuple[str, str]:
+        """
+        Remove uma fonte/perfil do ChromaDB.
+        
+        Args:
+            source_name: Nome da fonte a ser removida
     
-    parser = argparse.ArgumentParser(description="Instagram RAG Chat App")
-    parser.add_argument(
-        "--embedding-model",
-        default="mxbai-embed-large",
-        help="Modelo Ollama para embeddings"
-    )
-    parser.add_argument(
-        "--generation-model",
-        default="qwen3:30b",
-        help="Modelo Ollama para geração de respostas"
-    )
-    parser.add_argument(
-        "--share",
-        action="store_true",
-        help="Criar link público do Gradio"
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=7860,
-        help="Porta para a aplicação"
-    )
-    
-    args = parser.parse_args()
-    
-    # Inicializa aplicação
-    app = InstagramRAGApp(
-        embedding_model=args.embedding_model,
-        generation_model=args.generation_model
-    )
-    
-    # Lança interface
-    print(f"\n🌐 Iniciando interface web na porta {args.port}...")
-    app.launch(
-        server_name="0.0.0.0",
-        server_port=args.port,
-        share=args.share,
-        inbrowser=True
-    )
+        Returns:
+            Tuple (status_html, sources_html_atualizado)
+        """
+        try:
+            if not source_name or source_name == "Selecione...":
+                return (
+                    "<div style='color: orange;'>⚠️ Selecione uma fonte para remover</div>",
+                    self.generate_sources_html()
+                )
+            
+            # Remove perfil do ChromaDB
+            if self.use_agent:
+                collection = self.agent.embedding_manager.collection
+            else:
+                collection = self.embedding_manager.collection
+            
+            # Busca IDs da fonte
+            results = collection.get(
+                where={'profile': source_name},
+                limit=100000
+            )
+            
+            if not results['ids']:
+                return (
+                    f"<div style='color: orange;'>⚠️ Fonte '{source_name}' não encontrada</div>",
+                    self.generate_sources_html()
+                )
+            
+            # Deleta documentos
+            collection.delete(ids=results['ids'])
+            
+            # Atualiza stats
+            self._refresh_stats()
+            
+            return (
+                f"<div style='color: green; padding: 1rem; background: #f0f8ff; border-radius: 8px;'>✅ Fonte '@{source_name}' removida com sucesso! {len(results['ids'])} documentos deletados.</div>",
+                self.generate_sources_html()
+            )
+        
+        except Exception as e:
+            return (
+                f"<div style='color: red;'>❌ Erro ao remover fonte: {str(e)}</div>",
+                self.generate_sources_html()
+            )
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    # Parse de argumentos
+    parser = argparse.ArgumentParser(description="PING - UFF ANALYTICS")
+    parser.add_argument("--port", type=int, default=7860, help="Porta do servidor (padrão: 7860)")
+    parser.add_argument("--share", action="store_true", help="Criar link público compartilhável")
+    parser.add_argument("--embedding-model", type=str, default="mxbai-embed-large", help="Modelo de embeddings")
+    parser.add_argument("--generation-model", type=str, default="qwen3:30b", help="Modelo de geração")
+    parser.add_argument("--no-agent", action="store_true", help="Desabilita modo agente (usa RAG clássico)")
+    
+    args = parser.parse_args()
+    
+    print("\n" + "="*60)
+    print("🎓 PING - UFF ANALYTICS".center(60))
+    print("="*60)
+    
+    # Inicializa aplicação
+    print("\n📦 Inicializando sistema...")
+    app = InstagramRAGApp(
+        embedding_model=args.embedding_model,
+        generation_model=args.generation_model,
+        use_agent=not args.no_agent
+    )
+    
+    print("\n🚀 Iniciando servidor Gradio...")
+    print(f"   🌐 Porta: {args.port}")
+    print(f"   🔗 URL: http://localhost:{args.port}")
+    if args.share:
+        print("   🌍 Link público será gerado...")
+    
+    print("\n" + "="*60)
+    print("✨ Aplicação pronta! Acesse no navegador.".center(60))
+    print("="*60 + "\n")
+    
+    # Lança interface
+    try:
+        app.launch(
+            server_port=args.port,
+            share=args.share,
+            server_name="0.0.0.0",  # Aceita conexões externas
+            show_error=True,
+            quiet=False
+        )
+    except KeyboardInterrupt:
+        print("\n\n👋 Encerrando aplicação...")
+    except Exception as e:
+        print(f"\n❌ Erro ao iniciar: {e}")
+        import traceback
+        traceback.print_exc()
