@@ -1992,8 +1992,9 @@ class InstagramRAGApp:
                                     gr.Markdown("---")
                                     gr.Markdown("### 🗑️ Remover Fonte")
                                     
-                                    # Dropdown com fontes disponíveis
+                                    # 🔧 CORRIGIDO: Dropdown dinâmico
                                     def get_sources_list():
+                                        """Retorna lista de fontes disponíveis."""
                                         data = self.get_chromadb_sources()
                                         if data['sources']:
                                             return ["Selecione..."] + list(data['sources'].keys())
@@ -2022,25 +2023,29 @@ class InstagramRAGApp:
                                     Todos os documentos dessa fonte serão deletados do ChromaDB.
                                     """)
                             
-                            # Eventos
+                            # 🔧 CORRIGIDO: Eventos com atualização correta
+                            
+                            # Atualiza display E dropdown ao clicar em "Atualizar"
                             refresh_sources_btn.click(
-                                lambda: (
+                                fn=lambda: (
                                     self.generate_sources_html(),
-                                    gr.update(choices=get_sources_list())
+                                    gr.update(choices=get_sources_list(), value="Selecione...")
                                 ),
                                 outputs=[sources_display, source_to_delete]
                             )
                             
+                            # 🔧 CORRIGIDO: Ao deletar, atualiza display + dropdown + limpa status
                             delete_btn.click(
-                                self.delete_source,
+                                fn=self.delete_source,
                                 inputs=[source_to_delete],
                                 outputs=[delete_status, sources_display]
                             ).then(
-                                lambda: (
-                                    gr.update(choices=get_sources_list(), value="Selecione..."),
-                                    ""
+                                # Após deletar, atualiza dropdown e limpa seleção
+                                fn=lambda: gr.update(
+                                    choices=get_sources_list(), 
+                                    value="Selecione..."
                                 ),
-                                outputs=[source_to_delete, delete_status]
+                                outputs=[source_to_delete]
                             )
                 
                 # ===== ABA 5: DOCUMENTAÇÃO =====
@@ -2422,6 +2427,8 @@ class InstagramRAGApp:
                 self.generate_sources_html()
             )
 
+
+# 🔧 ADICIONAR NO FINAL DO ARQUIVO (após a classe InstagramRAGApp)
 
 if __name__ == "__main__":
     import argparse
