@@ -13,6 +13,16 @@ import llm_chat
 import json
 from sentiment_cache import SentimentCache
 from report_exporter import ReportExporter
+import nltk
+from nltk.corpus import stopwords
+
+# Download stopwords do NLTK (se necessário)
+try:
+    stopwords.words('portuguese')
+except LookupError:
+    print("⬇️ Baixando stopwords do NLTK...")
+    nltk.download('stopwords', quiet=True)
+    print("✅ Stopwords baixadas com sucesso!")
 
 class DashboardAnalytics:
     """Gerenciador de análises para o dashboard."""
@@ -787,20 +797,10 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                 'total_hashtag_occurrences': 0
             }
         
-        # Palavras comuns a ignorar (stopwords)
-        stopwords = {
-            'de', 'da', 'do', 'das', 'dos', 'a', 'o', 'as', 'os', 'um', 'uma',
-            'e', 'é', 'para', 'com', 'por', 'em', 'no', 'na', 'nos', 'nas',
-            'que', 'se', 'não', 'mais', 'como', 'seu', 'sua', 'ou', 'ao',
-            'pelos', 'pelas', 'esse', 'essa', 'este', 'esta', 'isso', 'isto',
-            'aquele', 'aquela', 'aquilo', 'já', 'também', 'só', 'pelo', 'pela',
-            'até', 'sem', 'sob', 'sobre', 'após', 'antes', 'quando', 'onde',
-            'quem', 'qual', 'quais', 'quanto', 'quantos', 'foi', 'ser', 'ter',
-            'estar', 'fazer', 'ir', 'vir', 'dar', 'ver', 'saber', 'poder',
-            'hoje', 'ontem', 'amanhã', 'agora', 'depois', 'sempre', 'nunca',
-            'muito', 'pouco', 'tudo', 'nada', 'algo', 'alguém', 'ninguém',
-            'https', 'http', 'www', 'com', 'br', 'instagram', 'post', 'foto'
-        }
+        # 🆕 Usa stopwords do NLTK (português) + termos técnicos específicos
+        nltk_stopwords = set(stopwords.words('portuguese'))
+        technical_terms = {'https', 'http', 'www', 'com', 'br', 'instagram', 'post', 'foto'}
+        stopwords_combined = nltk_stopwords.union(technical_terms)
         
         # Contadores
         term_counter = {}
@@ -829,8 +829,8 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                     # Remove pontuação
                     word = ''.join(c for c in word if c.isalnum() or c in ['á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ', 'ç'])
                     
-                    # Filtra palavras muito curtas ou stopwords
-                    if len(word) >= 4 and word not in stopwords:
+                    # Filtra palavras muito curtas ou stopwords (NLTK)
+                    if len(word) >= 4 and word not in stopwords_combined:
                         term_counter[word] = term_counter.get(word, 0) + 1
             
             # � HASHTAGS NÃO são mais analisadas para recomendações

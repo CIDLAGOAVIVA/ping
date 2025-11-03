@@ -15,4 +15,5 @@ dependencies = [
     "python-dateutil>=2.8.0",
     "emoji>=2.0.0",
     "reportlab>=4.4.4",
+    "nltk>=3.8.0", # Natural Language Toolkit para stopwords
 ]

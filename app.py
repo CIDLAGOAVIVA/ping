@@ -9,6 +9,12 @@ from typing import List, Tuple, Dict, Optional, Any
 import json
 import os
 from pathlib import Path
+import tempfile
+
+# 🔧 Configurar diretório temporário do Gradio para evitar problemas de permissão
+custom_temp_dir = Path.home() / ".cache" / "gradio"
+custom_temp_dir.mkdir(parents=True, exist_ok=True)
+os.environ["GRADIO_TEMP_DIR"] = str(custom_temp_dir)
 
 # 🔧 IMPORTS CORRIGIDOS - usar agent_system e rag_system
 from agent_system import RAGAgent
