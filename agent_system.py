@@ -136,13 +136,20 @@ class RAGAgent:
    - Retorna: Contagem positivo/negativo/neutro, aspectos positivos/negativos, resumo qualitativo
 
 11. **semantic_search**
-   - Uso: Buscar posts/notícias por CONTEÚDO/TEMA usando busca semântica vetorial
-   - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", etc.
-   - Parâmetros: query (str - reformule para otimizar busca), n_results (int), profile (str, opcional), content_type_filter (str, opcional: 'news' ou 'instagram_post')
+   - Uso: Buscar posts/notícias/DEBATES por CONTEÚDO/TEMA usando busca semântica vetorial
+   - Quando usar: Perguntas sobre "o que foi dito", "posts sobre X", "aparições", "mencionou", "posicionamento sobre Y", etc.
+   - Parâmetros: 
+     * query (str - reformule para otimizar busca)
+     * n_results (int)
+     * profile (str, opcional)
+     * content_type_filter (str, opcional: 'news', 'instagram_post' ou 'debate')
    - Exemplo: {"tool": "semantic_search", "params": {"query": "HUAP hospital atendimento saúde", "n_results": 8}}
-   - Exemplo com filtro: {"tool": "semantic_search", "params": {"query": "cotas ações afirmativas", "n_results": 10, "content_type_filter": "news"}}
+   - Exemplo com filtro de notícias: {"tool": "semantic_search", "params": {"query": "cotas ações afirmativas", "n_results": 10, "content_type_filter": "news"}}
+   - Exemplo com filtro de debates: {"tool": "semantic_search", "params": {"query": "Roberto Salles teletrabalho 30 horas servidor", "n_results": 15, "content_type_filter": "debate"}}
    - IMPORTANTE: Reformule a query do usuário para termos mais específicos e relevantes
-   - IMPORTANTE: Use content_type_filter='news' quando buscar sobre ex-reitor ou período histórico
+   - IMPORTANTE: Use content_type_filter='news' quando buscar sobre ex-reitor ou período histórico (2009-2018)
+   - IMPORTANTE: Use content_type_filter='debate' quando buscar POSICIONAMENTO POLÍTICO, PROPOSTAS, ARGUMENTOS
+   - IMPORTANTE: A LLM LÊ O CAMPO "trecho" dos debates, que contém as FALAS LITERAIS de Roberto Salles
 
 12. **get_news_articles**
    - Uso: Buscar NOTÍCIAS filtradas por data e/ou publisher
@@ -177,14 +184,26 @@ class RAGAgent:
 - @vicereitor (Vice-Reitor ATUAL da UFF)
 
 ## FONTES DE DADOS AUXILIARES:
-- Notícias/Arquivo: Conteúdo histórico sobre a UFF e ex-reitor Roberto Salles (2009-2018)
+- **Notícias/Arquivo**: Conteúdo histórico sobre a UFF e ex-reitor Roberto Salles (2009-2018)
   - Use para perguntas sobre Roberto Salles/Sales ou eventos passados
+  - Ferramentas: search_news_by_person, get_news_articles, semantic_search com content_type_filter='news'
+
+- **Debates Políticos**: Transcrições de debates eleitorais de Roberto Salles (período 2006-2018)
+  - Use para perguntas sobre POSICIONAMENTO POLÍTICO, PROPOSTAS DE CAMPANHA, DEBATES ELEITORAIS
+  - Contém argumentos, propostas e posições políticas detalhadas no campo "trecho" (falas literais)
+  - Ferramenta: semantic_search com content_type_filter='debate'
+  - Palavras-chave: "debate", "eleição", "proposta", "plano de governo", "candidatura", "posicionamento"
+  - CAMPOS IMPORTANTES:
+    * "trecho": contém a FALA LITERAL de Roberto Salles (ex: "XXX_Roberto SallesNós vamos retornar as 30 horas...")
+    * "topicos": temas abordados (ex: "30h/Teletrabalho", "Hospital/EBSERH", "ReUni/Infra")
+    * "fonte": qual debate (1o_debate, 2o_debate, etc.)
+    * "timecode": momento da fala no debate
 
 ## CONTEXTO IMPORTANTE:
 - **Roberto Salles (ou Roberto Sales)** foi REITOR DA UFF entre 2009-2018
 - Notícias sobre "reitor da UFF" do período 2009-2018 referem-se a Roberto Salles
 - Posts atuais (2023-2025) do perfil @reitor referem-se ao REITOR ATUAL (Antônio Cláudio Nóbrega)
-- Para perguntas sobre Roberto Salles: SEMPRE buscar em NOTÍCIAS, nunca em posts atuais
+- Para perguntas sobre Roberto Salles: SEMPRE buscar em NOTÍCIAS ou DEBATES, nunca em posts atuais
 
 ## DIRETRIZES CRÍTICAS:
 
@@ -203,6 +222,20 @@ class RAGAgent:
 ✅ IMPORTANTE: Perguntas sobre POSICIONAMENTO/OPINIÃO do ex-reitor Roberto Salles SEMPRE usar search_news_by_person + semantic_search em notícias
 ✅ Exemplos: "o que Roberto Salles achava de X", "posição do ex-reitor sobre Y", "Roberto Salles falou sobre Z"
 ✅ GATILHOS CRÍTICOS: "ex-reitor", "Roberto", "Salles", "Sales" → buscar em notícias (2009-2018)
+
+### 🆕 Use BUSCA EM DEBATES quando:
+✅ Pergunta sobre PROPOSTAS DE CAMPANHA: "o que Roberto Salles propôs", "plano de governo", "promessas de campanha"
+✅ Pergunta sobre DEBATES ELEITORAIS: "debate eleitoral", "discussão política", "confronto eleitoral"
+✅ Pergunta sobre POSICIONAMENTO POLÍTICO DETALHADO: "visão política de X", "ideologia", "argumentos defendidos"
+✅ Pergunta sobre FALAS ESPECÍFICAS: "o que Roberto Salles disse sobre X no debate", "posicionamento sobre Y"
+✅ IMPORTANTE: Para debates, use semantic_search COM content_type_filter='debate'
+✅ Exemplos: 
+   - "qual o posicionamento de Roberto Salles sobre teletrabalho?" → buscar em debates
+   - "o que Roberto Salles defendeu sobre as 30 horas?" → buscar em debates
+   - "propostas de Roberto Salles para educação" → buscar em debates
+   - "o que Roberto Salles disse sobre hospital/EBSERH?" → buscar em debates
+✅ COMBINE com notícias para contexto completo: debates (propostas) + notícias (implementação)
+✅ A LLM LEIA o campo "trecho" que contém as falas LITERAIS de Roberto Salles nos debates
 
 ### Use WEB_SEARCH quando:
 ✅ CONTEXTO EXTERNO/ATUALIZADO: "como está X em 2025", "últimas notícias sobre Y", "o que está acontecendo com Z"
@@ -223,12 +256,16 @@ class RAGAgent:
 ### COMBINE FERRAMENTAS quando:
 ✅ Pergunta tem MÉTRICA + CONTEÚDO: use semantic_search primeiro, depois filtre por métrica
 ✅ Pergunta tem CONTEXTO EXTERNO + LOCAL: use web_search + semantic_search
+✅ Pergunta sobre ROBERTO SALLES (COMPLETA): debates (propostas) + notícias (ações) + semantic_search geral
 ✅ Precisa de CONTEXTO + RANKING: busca semântica + ordenação
 
 ## INSTRUÇÕES:
 - Analise se a pergunta é sobre CONTEÚDO (use semantic_search), MÉTRICAS (use tools estruturadas) ou CONTEXTO EXTERNO (use web_search)
+- Para perguntas sobre Roberto Salles, SEMPRE considere usar MÚLTIPLAS fontes: debates + notícias
+- Para perguntas sobre POSICIONAMENTO/FALAS de Roberto Salles, PRIORIZE busca em debates com content_type_filter='debate'
 - Você pode usar MÚLTIPLAS ferramentas em sequência
 - Ao usar semantic_search, REFORMULE a query para termos mais específicos
+- A LLM deve LER o campo "trecho" dos debates que contém as falas literais
 - Retorne APENAS um JSON válido, sem texto adicional
 """
 
@@ -271,8 +308,10 @@ Pergunta do usuário: "{user_question}"
 - @vicereitor (Vice-Reitor ATUAL: Fábio Barbosa Passos)
 
 **FONTES AUXILIARES (NÃO são perfis):**
-- Notícias/Arquivo: Para perguntas sobre ex-reitor Roberto Salles ou eventos históricos
-  - Use ferramentas: search_news_by_person, get_news_articles, semantic_search com content_type_filter='news'
+- **Notícias/Arquivo**: Para perguntas sobre ex-reitor Roberto Salles ou eventos históricos (2009-2018)
+  - Ferramentas: search_news_by_person, get_news_articles, semantic_search com content_type_filter='news'
+- **Debates Políticos**: Para perguntas sobre propostas, argumentos e posicionamento político de Roberto Salles
+  - Ferramenta: semantic_search sem filtro ou genérico (busca em transcrições de debates)
 
 ## 📅 DATAS CRÍTICAS (NÃO CONFUNDA!):
 - **Roberto de Souza Salles**: Reitor de **23 de novembro de 2006 até 18 de novembro de 2014**
@@ -418,10 +457,41 @@ Pergunta: "Como está a inflação? E o DCE falou sobre isso?"
     ]
 }}
 
+🆕 Pergunta: "Quais eram as propostas de Roberto Salles para a educação?"
+{{
+    "reasoning": "Pergunta sobre PROPOSTAS DE CAMPANHA do ex-reitor. Deve buscar em DEBATES (propostas políticas) + NOTÍCIAS (implementação). Usar semantic_search genérico para debates e com filtro para notícias",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "Roberto Salles educação ensino proposta plano universidade", "n_results": 15}}}},
+        {{"tool": "search_news_by_person", "params": {{"person_name": "Roberto Salles", "limit": 10}}}}
+    ]
+}}
+
+🆕 Pergunta: "O que Roberto Salles defendeu nos debates eleitorais?"
+{{
+    "reasoning": "Pergunta sobre DEBATES ELEITORAIS. Foco primário em transcrições de debates. Usar semantic_search genérico com termos relacionados a debates e propostas",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "Roberto Salles debate eleitoral candidato propostas argumentos defende eleição", "n_results": 20}}}}
+    ]
+}}
+
+🆕 Pergunta: "Qual era a visão política de Roberto Salles sobre pesquisa científica?"
+{{
+    "reasoning": "Pergunta sobre POSICIONAMENTO POLÍTICO detalhado. Combinar debates (visão política) + notícias (ações). Usar múltiplas buscas semânticas",
+    "actions": [
+        {{"tool": "semantic_search", "params": {{"query": "Roberto Salles pesquisa científica ciência tecnologia inovação desenvolvimento", "n_results": 15}}}},
+        {{"tool": "search_news_by_person", "params": {{"person_name": "Roberto Salles", "limit": 10}}}},
+        {{"tool": "semantic_search", "params": {{"query": "pesquisa ciência universidade UFF política científica", "n_results": 10, "content_type_filter": "news"}}}}
+    ]
+}}
+
 IMPORTANTE: 
 - Para CONTEÚDO/TEMA → semantic_search (sempre reformule query)
 - Para MÉTRICAS/RANKING → ferramentas estruturadas
 - Para CONTEXTO EXTERNO/ATUALIZADO → web_search (notícias recentes, eventos atuais)
+- Para ROBERTO SALLES:
+  - PROPOSTAS/DEBATES → semantic_search genérico (debates)
+  - NOTÍCIAS/AÇÕES → search_news_by_person + semantic_search com content_type_filter='news'
+  - ANÁLISE COMPLETA → combine ambas as fontes
 - DICAS para web_search: transforme perguntas como "qual é a situação de X?" em "X Brasil 2025" ou "X notícias recentes"
 - Retorne APENAS o JSON, nada mais!
 """
@@ -978,26 +1048,38 @@ IMPORTANTE:
             context += self._format_results_for_llm(results, tool_name)
             context += "\n---\n\n"
         
-        synthesis_prompt = f"""{context}
+        # Atualiza o prompt de síntese com instruções críticas
+        synthesis_prompt = f"""Você é um assistente especializado da Universidade Federal Fluminense (UFF).
 
-## Pergunta Original do Usuário:
-{user_question}
+Pergunta do usuário: "{user_question}"
 
-## Sua Tarefa:
-Sintetize os dados acima em uma resposta clara, completa e bem formatada para o usuário.
+Dados recuperados:
+{context}
 
-DIRETRIZES:
-1. Use APENAS os dados fornecidos acima
-2. Seja objetivo e direto
-3. Cite números específicos e links quando relevante
-4. Use formatação markdown para melhor legibilidade
-5. Organize a informação de forma lógica
-6. Se múltiplas ferramentas foram usadas, integre os resultados de forma coerente
-7. Sempre inclua links dos posts quando disponível
-8. NÃO repita instruções ou seções de "Diretrizes" na sua resposta
-9. NÃO inclua avisos sobre Roberto Salles a menos que a pergunta mencione especificamente sobre ele
+## INSTRUÇÕES CRÍTICAS:
 
-NÃO invente informações que não estão no contexto!
+1. **CITE AS FONTES CORRETAMENTE**:
+   - Para debates: "Segundo Roberto Salles no [fonte do debate], ele afirmou: '[trecho da fala]'"
+   - Para notícias: "De acordo com [publisher] em [data]..."
+   - Para posts: "Em post de @[profile] em [data]..."
+
+2. **USE AS FALAS LITERAIS DOS DEBATES**:
+   - O campo "trecho" contém as FALAS LITERAIS de Roberto Salles
+   - Cite textualmente quando relevante (ex: "Roberto Salles afirmou: 'Nós vamos retornar as 30 horas'")
+   - Identifique o contexto do debate (1o_debate, 2o_debate, etc.)
+
+3. **ESTRUTURE A RESPOSTA**:
+   - Responda diretamente à pergunta
+   - Use citações literais dos debates quando disponível
+   - Contextualize com informações de notícias se houver
+   - Seja preciso sobre datas e eventos
+
+4. **EVITE**:
+   - Inventar informações não presentes nos dados
+   - Misturar contextos temporais (ex: não confunda ações de 2009-2018 com 2023-2025)
+   - Atribuir falas de uma fonte a outra
+
+Responda em português brasileiro de forma clara e objetiva.
 """
 
         try:
