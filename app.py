@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from data_ingestion import DataIngestion
 
 # 🔧 Configurar diretório temporário do Gradio para evitar problemas de permissão
 custom_temp_dir = Path.home() / ".cache" / "gradio"
@@ -227,6 +228,9 @@ class InstagramRAGApp:
         print(f"   📊 Registros indexados: {self.stats['total']}")
         print(f"   🤖 Modelo: {generation_model}")
         print(f"   🎯 Modo: {'Agente' if use_agent else 'RAG Simples'}")
+        
+        # Inicializa gerenciador de ingestão
+        self.data_ingestion = DataIngestion()
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -1344,21 +1348,124 @@ class InstagramRAGApp:
             traceback.print_exc()
             return None, None
     
-    def create_interface(self) -> gr.Blocks:
-        """Cria interface Gradio com todas as abas incluindo novo Dashboard."""
+    def process_upload(
+        self,
+        file,
+        profile_name: str,
+        text_column: str = "text",
+        auto_index: bool = True
+    ) -> tuple[str, str]:
+        """
+        Processa arquivo enviado pelo usuário.
         
+        Returns:
+            (status_html, preview_html)
+        """
+        if file is None:
+            return "⚠️ Nenhum arquivo selecionado", ""
+        
+        import shutil
+        from pathlib import Path
+        
+        # Salva arquivo temporário
+        temp_path = Path(self.data_ingestion.temp_dir) / Path(file.name).name
+        shutil.copy(file.name, temp_path)
+        
+        # Processa arquivo
+        documents, status = self.data_ingestion.process_file(
+            temp_path,
+            profile_name=profile_name,
+            text_column=text_column
+        )
+        
+        if not documents:
+            return f"<div style='color: red;'>{status}</div>", ""
+        
+        # Preview dos primeiros documentos
+        preview_html = self._generate_preview_html(documents[:5])
+        
+        # Se auto-index ativado, indexa no ChromaDB
+        if auto_index and documents:
+            try:
+                if self.use_agent:
+                    self.agent.embedding_manager.add_posts(documents)
+                else:
+                    self.embedding_manager.add_posts(documents)
+                
+                status += f"<br>✅ {len(documents)} documentos indexados no ChromaDB"
+                
+                # Atualiza stats
+                self._refresh_stats()
+            except Exception as e:
+                status += f"<br>⚠️ Erro ao indexar: {e}"
+        
+        status_html = f"<div style='color: green; padding: 1rem; background: #f0f8ff; border-radius: 8px;'>{status}</div>"
+        
+        # DEPOIS (preserva o arquivo)
+        final_path = self.data_ingestion.data_dir / f"{profile_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{temp_path.name}"
+        shutil.move(temp_path, final_path)
+        status += f"<br>💾 Arquivo salvo em: {final_path}"
+        
+        return status_html, preview_html
+
+    def _generate_preview_html(self, documents: List[Dict]) -> str:
+        """Gera HTML de preview dos documentos."""
+        html = "<div style='padding: 1rem;'>"
+        html += "<h3>📄 Preview dos Documentos</h3>"
+        
+        for i, doc in enumerate(documents, 1):
+            html += f"""
+            <div style='border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 0.5rem 0; background: #fafafa;'>
+                <p><strong>Documento {i}</strong></p>
+                <p style='color: #666; font-size: 0.85rem;'>
+                    ID: {doc['id']}<br>
+                    Perfil: {doc['profile']}<br>
+                    Tipo: {doc['content_type']}
+                </p>
+                <p style='margin-top: 0.5rem;'>
+                    <strong>Texto:</strong><br>
+                    {doc['text'][:300]}{'...' if len(doc['text']) > 300 else ''}
+                </p>
+            </div>
+            """
+        
+        if len(documents) > 5:
+            html += f"<p style='color: #888;'>... e mais {len(documents) - 5} documentos</p>"
+        
+        html += "</div>"
+        return html
+
+    def _refresh_stats(self):
+        """Atualiza estatísticas após ingestão."""
+        if self.use_agent:
+            em_stats = self.agent.embedding_manager.get_stats()
+        else:
+            em_stats = self.embedding_manager.get_stats()
+        
+        self.stats['indexed_posts'] = em_stats.get('total_documents', 0)
+        self.stats['profiles'] = em_stats.get('profiles', [])
+
+    def create_interface(self) -> gr.Blocks:
+        """
+        Cria interface Gradio profissional com abas navegáveis.
+        Tema claro como padrão com suporte total a dark mode.
+        
+        Returns:
+            Interface Gradio configurada
+        """
         with gr.Blocks(
             title="PING - UFF ANALYTICS",
             theme=ping_theme
         ) as app:
             
-            gr.HTML("""
-            <div class="header-custom">
-                <h1 style="margin: 0 0 0.5rem 0;">📊 PING - UFF ANALYTICS</h1>
-                <p style="margin: 0;">Sistema de Análise Inteligente de Dados da UFF</p>
+            # Header principal
+            gr.HTML(f"""
+            <div class="header-container">
+                <h1>🎓 PING - UFF ANALYTICS</h1>
             </div>
             """)
             
+            # Interface com abas
             with gr.Tabs():
                 # ===== ABA 1: CHAT =====
                 with gr.TabItem("💬 Chat"):
@@ -1450,7 +1557,7 @@ class InstagramRAGApp:
                             mode_text = "🤖 Agente (LLM decide ferramentas)" if self.use_agent else "🔍 Clássico (Keywords)"
                             gr.Markdown(f"__{mode_text}__")
                 
-                # ===== ABA 2: DASHBOARD DE ANÁLISE ===== ⭐ NOVO
+                # ===== ABA 2: ESTATÍSTICAS =====
                 with gr.TabItem("📊 Dashboard"):
                     with gr.Row():
                         with gr.Column(scale=9):
@@ -1732,11 +1839,7 @@ class InstagramRAGApp:
                         outputs=dashboard_display
                     )
 
-                # ===== ABA 3: ESTATÍSTICAS (antiga) =====
-                with gr.TabItem("📈 Estatísticas"):
-                    dashboard_html = gr.HTML(value=self.get_dashboard_html())
-                
-                # ===== ABA 4: HISTÓRICO =====
+                # ===== ABA 3: HISTÓRICO =====
                 with gr.TabItem("📚 Histórico"):
                     with gr.Row():
                         with gr.Column(scale=8):
@@ -1770,6 +1873,104 @@ class InstagramRAGApp:
                                 lambda: self.get_history_html(),
                                 outputs=history_html
                             )
+                
+                # ===== ABA 4: INGESTÃO DE DADOS (NOVA) =====
+                with gr.TabItem("📥 Ingestão de Dados"):
+                    gr.HTML("""
+                    <div style='padding: 2rem;'>
+                        <h2 style='color: #667eea;'>📥 Carregar Novos Dados</h2>
+                        <p style='color: #666; font-size: 0.95rem;'>
+                            Adicione novos dados de qualquer fonte para análise pela IA.
+                            Os dados serão indexados automaticamente no banco vetorial.
+                        </p>
+                    </div>
+                    """)
+                    
+                    with gr.Row():
+                        with gr.Column(scale=7):
+                            # Upload de arquivo
+                            file_upload = gr.File(
+                                label="📁 Selecione o Arquivo",
+                                file_types=['.json', '.csv', '.txt', '.pdf'],
+                                type="filepath"
+                            )
+                            
+                            # Configurações
+                            with gr.Row():
+                                profile_name_input = gr.Textbox(
+                                    label="Nome da Fonte/Perfil",
+                                    placeholder="Ex: pesquisa_alunos, relatorio_2024",
+                                    value="custom_data"
+                                )
+                                text_column_input = gr.Textbox(
+                                    label="Coluna de Texto (CSV)",
+                                    placeholder="Nome da coluna com texto principal",
+                                    value="text"
+                                )
+                            
+                            auto_index_checkbox = gr.Checkbox(
+                                label="✅ Indexar automaticamente no ChromaDB",
+                                value=True
+                            )
+                            
+                            process_btn = gr.Button(
+                                "🚀 Processar e Indexar",
+                                variant="primary",
+                                size="lg"
+                            )
+                            
+                            # Status
+                            status_output = gr.HTML()
+                            
+                            # Preview
+                            preview_output = gr.HTML()
+                        
+                        # Painel lateral com informações
+                        with gr.Column(scale=3):
+                            gr.Markdown("### 📋 Formatos Suportados")
+                            gr.Markdown("""
+                            - **JSON**: Posts, documentos, arrays
+                            - **CSV**: Tabelas com dados estruturados
+                            - **TXT**: Texto simples (divide por parágrafos)
+                            - **PDF**: Extração de texto por página
+                            
+                            **Limite:** 50MB por arquivo
+                            """)
+                            
+                            gr.Markdown("### 💡 Dicas")
+                            gr.Markdown("""
+                            1. **JSON**: Pode ser lista ou objeto único
+                            2. **CSV**: Especifique a coluna com texto principal
+                            3. **TXT**: Será dividido por parágrafos vazios
+                            4. **PDF**: Cada página vira um documento
+                            
+                            Após indexar, os dados ficam disponíveis no chat!
+                            """)
+                            
+                            gr.Markdown("### ⚙️ Estrutura Esperada (JSON)")
+                            gr.Code(
+                                value='''[
+  {
+    "text": "Conteúdo...",
+    "title": "Título",
+    "date": "2025-01-01",
+    "metadata": {...}
+  }
+]''',
+                                language="json"
+                            )
+                    
+                    # Eventos
+                    process_btn.click(
+                        self.process_upload,
+                        inputs=[
+                            file_upload,
+                            profile_name_input,
+                            text_column_input,
+                            auto_index_checkbox
+                        ],
+                        outputs=[status_output, preview_output]
+                    )
                 
                 # ===== ABA 5: DOCUMENTAÇÃO =====
                 with gr.TabItem("📖 Documentação"):

@@ -1,5 +1,19 @@
 [
   {
+    "timestamp": "2025-11-03T11:31:05.693474",
+    "question": "Que documento é esse? ID: custom_18eeccfb331b49f6\nPerfil: custom_data\nTipo: custom_ingestion",
+    "response": "## Análise do Documento Solicitado\n\n**ID do documento:** custom_18eeccfb331b49f6  \n**Perfil:** custom_data  \n**Tipo:** custom_ingestion  \n\n**Dados do post relacionado:**\n- **Data de publicação:** 3 de novembro de 2025\n- **Engajamento:** 0 curtidas, 0 comentários\n- **Link:** Não disponível\n- **Conteúdo:** texto exemplo...\n\n**Observação:** Este é um documento de ingestão personalizada com dados de exemplo, não um post real do Instagram da UFF. O conteúdo aparece como texto de exemplo e não apresen",
+    "profile_filter": "dceuff, noticias, reitor, vicereitor",
+    "posts_count": 1
+  },
+  {
+    "timestamp": "2025-11-03T11:29:49.154109",
+    "question": "Mostre registros de custom_data",
+    "response": "# Análise de Posts do Instagram da UFF\n\n## Posts do Perfil @reitor (2024-2025)\n\n**Post mais recente:**\n- **Data:** 19 de agosto de 2025\n- **Curtidas:** 50\n- **Comentários:** 2\n- **Link:** https://www.instagram.com/p/DNiiXq2RB0L/\n- **Conteúdo:** Agradecimento ao reitor pela parceria com a Faperj para ciência, tecnologia e inovação\n\n**Outros posts:**\n- **29 de setembro de 2024** - 132 curtidas, 2 comentários\n  - Evento \"Simplesmente Mulher\" da PROEX sobre cidadania e extensão\n  - Link: https://www",
+    "profile_filter": "dceuff, noticias, reitor, vicereitor",
+    "posts_count": 10
+  },
+  {
     "timestamp": "2025-10-31T10:52:02.032459",
     "question": "Quero saber o top 3 de notícias negativas\n",
     "response": "## Análise de Notícias Negativas - Instagram UFF\n\n**Resultado da Análise:** Nenhuma notícia negativa encontrada\n\n**Detalhamento:**\n- 🔍 **Posts analisados:** 0\n- 📊 **Distribuição:** 0 posts negativos identificados\n- ⏰ **Período:** Todos os perfis da UFF analisados\n\n**Conclusão:**\nNão foi possível identificar nenhuma notícia negativa nos posts do Instagram da UFF na análise realizada. A busca por conteúdo com essa característica não retornou resultados, indicando que não há posts classificados com",

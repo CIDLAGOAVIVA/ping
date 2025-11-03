@@ -1,7 +1,7 @@
 [project]
 name = "ping"
 version = "3.0.0"
-description = "PING - UFF ANALYTICS: Sistema RAG com IA (DeepSeek Chat + Ollama Embeddings)"
+description = "PING - UFF ANALYTICS"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,4 +16,5 @@ dependencies = [
     "emoji>=2.0.0",
     "reportlab>=4.4.4",
     "nltk>=3.8.0", # Natural Language Toolkit para stopwords
+    "pypdf2>=3.0.0",  # Para leitura de PDFs
 ]
