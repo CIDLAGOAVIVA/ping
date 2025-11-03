@@ -1352,12 +1352,20 @@ class InstagramRAGApp:
         self,
         file,
         profile_name: str,
+        content_type: str = "custom_ingestion",  # 🆕 NOVO PARÂMETRO
         text_column: str = "text",
         auto_index: bool = True
     ) -> tuple[str, str]:
         """
         Processa arquivo enviado pelo usuário.
         
+        Args:
+            file: Arquivo enviado
+            profile_name: Nome do perfil/fonte
+            content_type: Tipo de conteúdo (aparece na interface)
+            text_column: Nome da coluna com texto (CSV)
+            auto_index: Se True, indexa automaticamente
+    
         Returns:
             (status_html, preview_html)
         """
@@ -1371,10 +1379,11 @@ class InstagramRAGApp:
         temp_path = Path(self.data_ingestion.temp_dir) / Path(file.name).name
         shutil.copy(file.name, temp_path)
         
-        # Processa arquivo
+        # Processa arquivo (🆕 passa content_type)
         documents, status = self.data_ingestion.process_file(
             temp_path,
             profile_name=profile_name,
+            content_type=content_type,  # 🆕 NOVO PARÂMETRO
             text_column=text_column
         )
         
@@ -1904,11 +1913,19 @@ class InstagramRAGApp:
                                             placeholder="Ex: pesquisa_alunos, relatorio_2024",
                                             value="custom_data"
                                         )
-                                        text_column_input = gr.Textbox(
-                                            label="Coluna de Texto (CSV)",
-                                            placeholder="Nome da coluna com texto principal",
-                                            value="text"
+                                        # 🆕 NOVO CAMPO: Tipo de Conteúdo
+                                        content_type_input = gr.Textbox(
+                                            label="Tipo de Conteúdo",
+                                            placeholder="Ex: pesquisa, debate, relatorio",
+                                            value="custom_ingestion",
+                                            info="Aparecerá como: 📄 [seu_tipo]: X documentos"
                                         )
+                                    
+                                    text_column_input = gr.Textbox(
+                                        label="Coluna de Texto (CSV)",
+                                        placeholder="Nome da coluna com texto principal",
+                                        value="text"
+                                    )
                                     
                                     auto_index_checkbox = gr.Checkbox(
                                         label="✅ Indexar automaticamente no ChromaDB",
@@ -1920,7 +1937,7 @@ class InstagramRAGApp:
                                         variant="primary",
                                         size="lg"
                                     )
-                                    
+
                                     # Status
                                     status_output = gr.HTML()
                                     
@@ -1968,6 +1985,7 @@ class InstagramRAGApp:
                                 inputs=[
                                     file_upload,
                                     profile_name_input,
+                                    content_type_input,  # 🆕 NOVO INPUT
                                     text_column_input,
                                     auto_index_checkbox
                                 ],

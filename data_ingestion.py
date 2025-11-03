@@ -27,7 +27,8 @@ class DataIngestion:
     def ingest_json(
         self, 
         file_path: Path,
-        profile_name: str = "custom_data"
+        profile_name: str = "custom_data",
+        content_type: str = "custom_ingestion"  # 🆕 NOVO PARÂMETRO
     ) -> List[Dict[str, Any]]:
         """
         Ingere arquivo JSON.
@@ -39,16 +40,17 @@ class DataIngestion:
         
         # Se for lista, processa cada item
         if isinstance(data, list):
-            return [self._normalize_document(item, profile_name, i) 
+            return [self._normalize_document(item, profile_name, i, content_type) 
                     for i, item in enumerate(data)]
         
         # Se for dict único, processa como documento único
-        return [self._normalize_document(data, profile_name, 0)]
+        return [self._normalize_document(data, profile_name, 0, content_type)]
 
     def ingest_csv(
         self,
         file_path: Path,
         profile_name: str = "custom_data",
+        content_type: str = "custom_ingestion",  # 🆕 NOVO PARÂMETRO
         text_column: str = "text",
         title_column: Optional[str] = None,
         date_column: Optional[str] = None
@@ -59,6 +61,7 @@ class DataIngestion:
         Args:
             file_path: Caminho do CSV
             profile_name: Nome do perfil/fonte
+            content_type: Tipo de conteúdo customizado
             text_column: Nome da coluna com texto principal
             title_column: Nome da coluna com título (opcional)
             date_column: Nome da coluna com data (opcional)
@@ -81,7 +84,7 @@ class DataIngestion:
                 if date_column and date_column in row:
                     doc['date'] = row[date_column]
                 
-                documents.append(self._normalize_document(doc, profile_name, i))
+                documents.append(self._normalize_document(doc, profile_name, i, content_type))
         
         return documents
 
@@ -89,6 +92,7 @@ class DataIngestion:
         self,
         file_path: Path,
         profile_name: str = "custom_data",
+        content_type: str = "custom_ingestion",  # 🆕 NOVO PARÂMETRO
         split_by: str = "\n\n"
     ) -> List[Dict[str, Any]]:
         """
@@ -97,6 +101,7 @@ class DataIngestion:
         Args:
             file_path: Caminho do arquivo TXT
             profile_name: Nome do perfil/fonte
+            content_type: Tipo de conteúdo customizado
             split_by: Separador para dividir texto em documentos
         """
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -109,7 +114,8 @@ class DataIngestion:
             self._normalize_document(
                 {'text': chunk, 'title': f"Trecho {i+1}"},
                 profile_name,
-                i
+                i,
+                content_type  # 🆕 PASSA TIPO CUSTOMIZADO
             )
             for i, chunk in enumerate(chunks)
         ]
@@ -117,7 +123,8 @@ class DataIngestion:
     def ingest_pdf(
         self,
         file_path: Path,
-        profile_name: str = "custom_data"
+        profile_name: str = "custom_data",
+        content_type: str = "custom_ingestion"  # 🆕 NOVO PARÂMETRO
     ) -> List[Dict[str, Any]]:
         """
         Ingere arquivo PDF.
@@ -139,7 +146,8 @@ class DataIngestion:
                     self._normalize_document(
                         {'text': text, 'title': f"Página {i+1}"},
                         profile_name,
-                        i
+                        i,
+                        content_type  # 🆕 PASSA TIPO CUSTOMIZADO
                     )
                 )
         
@@ -149,12 +157,19 @@ class DataIngestion:
         self,
         doc: Dict[str, Any],
         profile_name: str,
-        index: int
+        index: int,
+        content_type: str = "custom_ingestion"  # 🆕 NOVO PARÂMETRO
     ) -> Dict[str, Any]:
         """
         Normaliza documento para formato padrão do sistema.
         
         Formato compatível com embedding_manager.py e data_loader.py
+        
+        Args:
+            doc: Documento a ser normalizado
+            profile_name: Nome do perfil/fonte
+            index: Índice do documento
+            content_type: Tipo de conteúdo customizado
         """
         # Extrai texto principal
         text = doc.get('text', '') or doc.get('content', '') or doc.get('caption', '')
@@ -178,7 +193,7 @@ class DataIngestion:
         normalized = {
             'id': doc.get('id', doc_id),
             'profile': profile_name,
-            'content_type': 'custom_ingestion',
+            'content_type': content_type,  # 🆕 USA O TIPO CUSTOMIZADO
             'type': doc.get('type', 'Document'),
             'text': text,
             'url': doc.get('url', ''),
@@ -220,11 +235,18 @@ class DataIngestion:
         self,
         file_path: Path,
         profile_name: str = "custom_data",
+        content_type: str = "custom_ingestion",  # 🆕 NOVO PARÂMETRO
         **kwargs
     ) -> tuple[List[Dict[str, Any]], str]:
         """
         Processa arquivo baseado na extensão.
         
+        Args:
+            file_path: Caminho do arquivo
+            profile_name: Nome do perfil/fonte
+            content_type: Tipo de conteúdo customizado
+            **kwargs: Argumentos específicos por formato
+    
         Returns:
             (documents, status_message)
         """
@@ -237,24 +259,24 @@ class DataIngestion:
             extension = file_path.suffix.lower()
             
             if extension == '.json':
-                docs = self.ingest_json(file_path, profile_name)
+                docs = self.ingest_json(file_path, profile_name, content_type)
             elif extension == '.csv':
                 # CSV aceita: text_column, title_column, date_column
                 csv_kwargs = {
                     k: v for k, v in kwargs.items() 
                     if k in ['text_column', 'title_column', 'date_column']
                 }
-                docs = self.ingest_csv(file_path, profile_name, **csv_kwargs)
+                docs = self.ingest_csv(file_path, profile_name, content_type, **csv_kwargs)
             elif extension == '.txt':
                 # TXT aceita apenas: split_by
                 txt_kwargs = {
                     k: v for k, v in kwargs.items() 
                     if k in ['split_by']
                 }
-                docs = self.ingest_text(file_path, profile_name, **txt_kwargs)
+                docs = self.ingest_text(file_path, profile_name, content_type, **txt_kwargs)
             elif extension == '.pdf':
                 # PDF não aceita kwargs extras
-                docs = self.ingest_pdf(file_path, profile_name)
+                docs = self.ingest_pdf(file_path, profile_name, content_type)
             else:
                 return [], f"❌ Formato {extension} não implementado"
             
