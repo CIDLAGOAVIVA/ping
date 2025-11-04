@@ -13,16 +13,8 @@ import llm_chat
 import json
 from sentiment_cache import SentimentCache
 from report_exporter import ReportExporter
-import nltk
-from nltk.corpus import stopwords
+from emerging_topics_cache import EmergingTopicsCache  # 🆕 NOVO IMPORT
 
-# Download stopwords do NLTK (se necessário)
-try:
-    stopwords.words('portuguese')
-except LookupError:
-    print("⬇️ Baixando stopwords do NLTK...")
-    nltk.download('stopwords', quiet=True)
-    print("✅ Stopwords baixadas com sucesso!")
 
 class DashboardAnalytics:
     """Gerenciador de análises para o dashboard."""
@@ -31,8 +23,9 @@ class DashboardAnalytics:
         self.em = embedding_manager
         self.tools = QueryTools(embedding_manager)
         self.collection = embedding_manager.collection
-        self.cache = SentimentCache()  # 🆕 Inicializa cache
-        self.exporter = ReportExporter()  # 🆕 Exportador
+        self.cache = SentimentCache()
+        self.exporter = ReportExporter()
+        self.topics_cache = EmergingTopicsCache()  # 🆕 NOVO CACHE
     
     def _normalize_datetime(self, dt: datetime) -> datetime:
         """
@@ -678,7 +671,7 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
             end_date: Data final (ISO format)
             profile_filter: Lista de perfis para filtrar
             use_llm_sentiment: Se True, usa LLM para análise de sentimento
-            use_cache: Se True, usa cache de sentimento
+            use_cache: Se True, usa cache de sentimento E tópicos  # 🆕
             content_filter: Tipo de conteúdo ("both", "caption", "comments")
         
         Returns:
@@ -752,8 +745,14 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         # Calcula métricas
         metrics = self._calculate_metrics(filtered_posts, filtered_news)
         
-        # 🆕 Detecta tópicos emergentes
-        emerging_topics = self._detect_emerging_topics(filtered_posts)
+        # 🆕 Detecta tópicos emergentes (COM CACHE)
+        emerging_topics = self._detect_emerging_topics(
+            filtered_posts,
+            use_cache=use_cache,  # 🆕 Passa parâmetro de cache
+            profile_filter=profile_filter,  # 🆕
+            start_date=start_date,  # 🆕
+            end_date=end_date  # 🆕
+        )
         metrics['emerging_topics'] = emerging_topics
         
         # Análise de sentimento (se solicitada)
@@ -774,15 +773,23 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         
         return metrics
 
-    def _detect_emerging_topics(self, posts: List[Dict]) -> Dict[str, Any]:
+    def _detect_emerging_topics(
+        self, 
+        posts: List[Dict],
+        use_cache: bool = True,  # 🆕 NOVO PARÂMETRO
+        profile_filter: Optional[List[str]] = None,  # 🆕 NOVO PARÂMETRO
+        start_date: Optional[str] = None,  # 🆕 NOVO PARÂMETRO
+        end_date: Optional[str] = None  # 🆕 NOVO PARÂMETRO
+    ) -> Dict[str, Any]:
         """
         🆕 Detecta tópicos emergentes através de análise de temas com LLM.
         
-        Ao invés de contar palavras individuais, extrai o tema central de cada
-        legenda e comentário usando IA, e depois agrega os temas identificados.
-        
         Args:
             posts: Lista de posts com 'caption' e opcionalmente 'comments_text'
+            use_cache: Se True, usa cache (padrão: True)
+            profile_filter: Lista de perfis filtrados
+            start_date: Data inicial (para cache)
+            end_date: Data final (para cache)
         
         Returns:
             Dicionário com tópicos emergentes baseados em temas extraídos por LLM
@@ -794,10 +801,37 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                 'topics': [],
                 'top_hashtags': [],
                 'total_unique_hashtags': 0,
-                'total_hashtag_occurrences': 0
+                'total_hashtag_occurrences': 0,
+                'cached': False
             }
         
-        print(f"🔍 Iniciando análise de temas com LLM para {len(posts)} posts...")
+        total_posts = len(posts)
+        
+        # 🆕 Conta textos totais (para chave de cache)
+        total_texts_estimate = 0
+        for post in posts:
+            if post.get('caption'):
+                total_texts_estimate += 1
+            comments = post.get('comments_text', '')
+            if comments:
+                total_texts_estimate += len([c for c in comments.split('\n\n') if len(c.strip()) > 10][:5])
+        
+        # 🆕 Verifica cache
+        if use_cache:
+            cached_result = self.topics_cache.get(
+                profiles=profile_filter,
+                start_date=start_date,
+                end_date=end_date,
+                total_posts=total_posts,
+                total_texts=total_texts_estimate
+            )
+            
+            if cached_result:
+                cached_result['cached'] = True
+                return cached_result
+        
+        # 🔧 Análise nova (cache miss ou desabilitado)
+        print(f"🔍 Iniciando análise de temas com LLM para {total_posts} posts...")
         
         # Contadores
         theme_counter = {}
@@ -855,23 +889,23 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
                 
                 prompt = f"""Você é um especialista em análise de comunicação universitária.
 
-    Analise cada um dos {len(batch)} textos abaixo e extraia o TEMA CENTRAL de cada um.
+Analise cada um dos {len(batch)} textos abaixo e extraia o TEMA CENTRAL de cada um.
 
-    INSTRUÇÕES:
-    - Retorne um rótulo de tema CONCISO (2-5 palavras) que capture a essência do texto
-    - Normalize temas similares para o mesmo rótulo
-    - Se o texto for muito genérico, use "Outros"
-    - Seja consistente nos rótulos
+INSTRUÇÕES:
+- Retorne um rótulo de tema CONCISO (2-5 palavras) que capture a essência do texto
+- Normalize temas similares para o mesmo rótulo
+- Se o texto for muito genérico, use "Outros"
+- Seja consistente nos rótulos
 
-    TEXTOS:
-    {texts_numbered}
+TEXTOS:
+{texts_numbered}
 
-    Retorne APENAS um JSON com o formato:
-    {{
-        "themes": ["Tema 1", "Tema 2", ...]
-    }}
+Retorne APENAS um JSON com o formato:
+{{
+    "themes": ["Tema 1", "Tema 2", ...]
+}}
 
-    A lista deve ter EXATAMENTE {len(batch)} elementos."""
+A lista deve ter EXATAMENTE {len(batch)} elementos."""
 
                 model = DEEPSEEK_MODEL if DEFAULT_PROVIDER == 'deepseek' else "qwen3:30b"
                 
@@ -921,7 +955,6 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         top_hashtags = sorted(hashtag_counter.items(), key=lambda x: x[1], reverse=True)[:5]
         
         # Monta resposta
-        total_posts = len(posts)
         topics = []
         
         for theme, count in top_themes:
@@ -961,12 +994,26 @@ A lista "sentiments" deve ter EXATAMENTE {len(batch)} elementos, um para cada po
         if topics:
             print(f"   - Top 3 temas: {[t['term'] for t in topics[:3]]}")
         
-        return {
+        result = {
             'total_topics': len(topics),
             'total_posts_analyzed': total_posts,
             'topics': topics,
             'top_hashtags': hashtags_list,
             'total_unique_hashtags': len(hashtag_counter),
             'total_hashtag_occurrences': sum(hashtag_counter.values()),
-            'analysis_method': 'llm_theme_extraction'
+            'analysis_method': 'llm_theme_extraction',
+            'cached': False  # 🆕 Marca como não-cacheado
         }
+        
+        # 🆕 Salva no cache
+        if use_cache:
+            self.topics_cache.set(
+                result,
+                profiles=profile_filter,
+                start_date=start_date,
+                end_date=end_date,
+                total_posts=total_posts,
+                total_texts=total_texts_analyzed
+            )
+        
+        return result
