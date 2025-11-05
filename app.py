@@ -231,6 +231,12 @@ class InstagramRAGApp:
         
         # Inicializa gerenciador de ingestão
         self.data_ingestion = DataIngestion()
+
+        # Inicializar cache
+        self.dashboard_cache = DashboardCache(
+            cache_file="dashboard_cache.json",
+            ttl_minutes=30  # Cache válido por 30 minutos
+        )
     
     def format_sources(self, posts: List[dict]) -> str:
         """
@@ -850,12 +856,17 @@ class InstagramRAGApp:
     
     def get_dashboard_html(self) -> str:
         """
-        Retorna HTML com dashboard de estatísticas profissional.
-        Usa variáveis CSS para compatibilidade com light/dark mode.
-        
-        Returns:
-            HTML formatado com dashboard
+        Retorna HTML com dashboard (usa cache se disponível).
         """
+        # Tenta usar cache primeiro
+        cached_html = self.dashboard_cache.get('dashboard_html')
+        if cached_html:
+            print("✅ Dashboard: usando cache")
+            return cached_html
+        
+        print("🔄 Dashboard: gerando nova estatística...")
+        
+        # Gera estatísticas (código atual)
         history_stats = self.history_manager.get_stats()
         generation_model = self.agent.generation_model if self.use_agent else self.rag.generation_model
         
