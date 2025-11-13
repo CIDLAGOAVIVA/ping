@@ -29,3 +29,16 @@ if DEFAULT_PROVIDER == 'deepseek':
 else:
     print(f"  - API Base: {OLLAMA_API_BASE}")
     print(f"  - Generation Model: {OLLAMA_GENERATION_MODEL}")
+
+# ========== CONFIGURAÇÕES DE ANÁLISE DE SENTIMENTO ==========
+
+# Modo padrão de análise
+# 'llm' = Usa IA (mais preciso, mais lento)
+# 'keywords' = Usa palavras-chave (mais rápido, menos preciso)
+DEFAULT_SENTIMENT_MODE = 'llm'
+
+# Tamanho do batch para análise LLM
+SENTIMENT_BATCH_SIZE = 50  # Posts por lote
+
+# Timeout para análise LLM (segundos)
+SENTIMENT_TIMEOUT = 300  # 5 minutos

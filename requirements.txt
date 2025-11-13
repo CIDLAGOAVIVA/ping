@@ -22,3 +22,5 @@ ddgs>=3.9.0  # DuckDuckGo web search (antigo: duckduckgo-search)
 # Utilities
 python-dateutil>=2.8.0
 emoji>=2.0.0
+reportlab>=4.0.0
+nltk>=3.8.0  # Natural Language Toolkit para stopwords

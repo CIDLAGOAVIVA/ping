@@ -525,6 +525,8 @@ class QueryTools:
             - neutral_count: Número de posts neutros
             - key_points: Pontos-chave identificados
             - examples: Exemplos de posts por sentimento
+            - hashtag_analysis: Análise de hashtags mais usadas ⭐ NOVO
+            - mention_analysis: Análise de menções mais frequentes ⭐ NOVO
         """
         try:
             # Busca posts relacionados ao tópico
@@ -557,30 +559,94 @@ class QueryTools:
                     'negative_count': 0,
                     'neutral_count': 0,
                     'key_points': [],
-                    'examples': {'positive': [], 'negative': [], 'neutral': []}
+                    'examples': {'positive': [], 'negative': [], 'neutral': []},
+                    'hashtag_analysis': {},
+                    'mention_analysis': {}
                 }
             
             # Limita ao número solicitado
             posts_to_analyze = relevant_posts[:n_posts]
             
-            # Prepara contexto para o LLM
+            # ⭐ NOVA FUNCIONALIDADE: Análise de Hashtags
+            hashtag_counter = {}
+            for post in posts_to_analyze:
+                metadata = post.get('metadata', {})
+                hashtags = metadata.get('hashtags', [])
+                for tag in hashtags:
+                    tag_lower = tag.lower()
+                    hashtag_counter[tag_lower] = hashtag_counter.get(tag_lower, 0) + 1
+            
+            # Top 10 hashtags mais usadas
+            top_hashtags = sorted(
+                hashtag_counter.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:10]
+            
+            hashtag_analysis = {
+                'total_unique': len(hashtag_counter),
+                'total_occurrences': sum(hashtag_counter.values()),
+                'top_hashtags': [
+                    {'tag': tag, 'count': count, 'percentage': round(count/len(posts_to_analyze)*100, 1)}
+                    for tag, count in top_hashtags
+                ],
+                'avg_per_post': round(sum(hashtag_counter.values()) / len(posts_to_analyze), 2)
+            }
+            
+            # ⭐ NOVA FUNCIONALIDADE: Análise de Menções
+            mention_counter = {}
+            for post in posts_to_analyze:
+                metadata = post.get('metadata', {})
+                mentions = metadata.get('mentions', [])
+                for mention in mentions:
+                    mention_clean = mention.replace('@', '').lower()
+                    mention_counter[mention_clean] = mention_counter.get(mention_clean, 0) + 1
+            
+            # Top 10 menções mais frequentes
+            top_mentions = sorted(
+                mention_counter.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:10]
+            
+            mention_analysis = {
+                'total_unique': len(mention_counter),
+                'total_occurrences': sum(mention_counter.values()),
+                'top_mentions': [
+                    {'username': f"@{user}", 'count': count, 'percentage': round(count/len(posts_to_analyze)*100, 1)}
+                    for user, count in top_mentions
+                ],
+                'avg_per_post': round(sum(mention_counter.values()) / len(posts_to_analyze), 2)
+            }
+            
+            # Prepara contexto para o LLM (incluindo análise de hashtags/menções)
             posts_text = "\n\n".join([
                 f"Post {i+1} (@{p['metadata']['profile']}):\n{p['document'][:500]}"
                 for i, p in enumerate(posts_to_analyze)
             ])
             
+            # Adiciona contexto de hashtags e menções ao prompt
+            social_context = f"""
+
+CONTEXTO SOCIAL DOS POSTS:
+- Hashtags mais usadas: {', '.join([f"#{tag}" for tag, _ in top_hashtags[:5]])}
+- Menções mais frequentes: {', '.join([f"@{user}" for user, _ in top_mentions[:5]])}
+- Média de hashtags por post: {hashtag_analysis['avg_per_post']}
+- Média de menções por post: {mention_analysis['avg_per_post']}
+"""
+            
             # Prompt para análise de sentimento
             prompt = f"""Analise o sentimento dos posts abaixo sobre o tópico "{topic}".
-
+{social_context}
 POSTS:
 {posts_text}
 
 Forneça uma análise estruturada em formato JSON com:
-1. sentiment_summary: Resumo geral do sentimento (2-3 frases)
+1. sentiment_summary: Resumo geral do sentimento (2-3 frases), considerando também as hashtags e menções usadas
 2. positive_count: Número de posts com tom positivo/favorável
 3. negative_count: Número de posts com tom negativo/crítico
 4. neutral_count: Número de posts com tom neutro/informativo
-5. key_points: Lista de 3-5 pontos-chave sobre como o tópico é abordado
+5. key_points: Lista de 3-5 pontos-chave sobre como o tópico é abordado (inclua observações sobre hashtags/menções se relevante)
 6. positive_aspects: Lista de aspectos positivos mencionados
 7. negative_aspects: Lista de aspectos negativos/críticas mencionadas
 
@@ -645,7 +711,9 @@ Retorne APENAS o JSON, sem texto adicional."""
                     'key_points': analysis.get('key_points', []),
                     'positive_aspects': analysis.get('positive_aspects', []),
                     'negative_aspects': analysis.get('negative_aspects', []),
-                    'examples': examples
+                    'examples': examples,
+                    'hashtag_analysis': hashtag_analysis,  # ⭐ NOVO
+                    'mention_analysis': mention_analysis   # ⭐ NOVO
                 }
                 
             except json.JSONDecodeError as e:
@@ -666,7 +734,9 @@ Retorne APENAS o JSON, sem texto adicional."""
                     'positive_aspects': [],
                     'negative_aspects': [],
                     'examples': {'positive': posts_to_analyze[:2], 'negative': [], 'neutral': []},
-                    'error': 'LLM response parsing failed'
+                    'error': 'LLM response parsing failed',
+                    'hashtag_analysis': hashtag_analysis,
+                    'mention_analysis': mention_analysis
                 }
             
         except Exception as e:
@@ -683,7 +753,9 @@ Retorne APENAS o JSON, sem texto adicional."""
                 'positive_aspects': [],
                 'negative_aspects': [],
                 'examples': {'positive': [], 'negative': [], 'neutral': []},
-                'error': str(e)
+                'error': str(e),
+                'hashtag_analysis': {},
+                'mention_analysis': {}
             }
 
 
